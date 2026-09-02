@@ -114,16 +114,11 @@ void screen_draw_content_area(
         CONSOLE_COLOR_YELLOW, CONSOLE_COLOR_BLACK
     );
 
-    console_write_at(
-        console, 4, (short)(layout->content_y + 3),
-        L"界面框架已就绪，业务内容将在此区域显示。",
-        CONSOLE_COLOR_LIGHT_GRAY, CONSOLE_COLOR_BLACK
-    );
-
     if (layout->width < RECOMMENDED_SCREEN_WIDTH ||
         layout->height < RECOMMENDED_SCREEN_HEIGHT) {
         console_write_at(
-            console, 4, (short)(layout->content_y + 5),
+            console, 4,
+            (short)(layout->content_y + layout->content_height - 2),
             L"提示：建议将终端窗口调整到至少 100 × 30。",
             CONSOLE_COLOR_YELLOW, CONSOLE_COLOR_BLACK
         );
@@ -181,4 +176,3 @@ bool screen_draw_shell(
     screen_draw_status_bar(console, &layout, status);
     return true;
 }
-

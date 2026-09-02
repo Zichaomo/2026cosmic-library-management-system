@@ -1,18 +1,16 @@
 #include "app.h"
+#include "ui/screen.h"
 
 #include <stdlib.h>
 
 static void render_startup_screen(const App *app) {
-    static const wchar_t screen[] =
-        L"┌──────────────────────────────────────────────────────────┐\r\n"
-        L"│                    宇宙图书馆管理系统                    │\r\n"
-        L"├──────────────────────────────────────────────────────────┤\r\n"
-        L"│  工程骨架初始化成功。                                    │\r\n"
-        L"│  下一步：实现欢迎页面和输入事件循环。                    │\r\n"
-        L"└──────────────────────────────────────────────────────────┘\r\n";
-
     console_clear(&app->console);
-    console_write(&app->console, screen);
+    screen_draw_shell(
+        &app->console,
+        L"宇宙图书馆管理系统",
+        L" 欢迎页 ",
+        L"状态：系统就绪  |  当前用户：未登录  |  F1 帮助  |  Ctrl+Q 退出"
+    );
 }
 
 bool app_init(App *app) {

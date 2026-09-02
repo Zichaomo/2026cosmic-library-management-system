@@ -1,7 +1,10 @@
 # 宇宙图书馆管理系统（Library Management System）
 
 纯 C 语言实现的 Windows 控制台图书馆管理系统：字符画 TUI 界面（支持鼠标点击）、CSV 持久化。
-课程设计 / 个人项目。详细需求见 [`docs/PRD.md`](docs/PRD.md)。
+课程设计 / 个人项目。
+
+- 📖 产品需求文档：[`docs/PRD.md`](docs/PRD.md)
+- 📗 用户使用手册：[`docs/用户手册.md`](docs/用户手册.md)
 
 ## 分支约定
 

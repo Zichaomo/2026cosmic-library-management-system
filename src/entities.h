@@ -79,6 +79,15 @@ typedef struct {
     char created_at[24];
 } Reader;
 
+/* ============ 管理员（admins.csv，扩展表） ============ */
+typedef struct {
+    EntityId id;
+    char username[64];      /* 登录名，唯一 */
+    char password_hash[64]; /* FNV-1a + 盐 的十六进制 */
+    char salt[32];
+    char created_at[24];
+} Admin;
+
 /* ============ 借阅单（loans.csv） ============ */
 /* 状态：借出 / 已还 / 逾期 / 续借 */
 typedef enum {

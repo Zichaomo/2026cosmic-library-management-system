@@ -1,9 +1,12 @@
-/* 宇宙图书馆管理系统 - 入口（骨架版） */
+/* 宇宙图书馆管理系统 - 入口（M1：控制台框架 + 事件循环） */
 #include <stdio.h>
 
+#include "core/auth.h"
 #include "data/repository.h"
 #include "types.h"
 #include "ui/console.h"
+#include "ui/input.h"
+#include "ui/screen.h"
 #include "ui/theme.h"
 
 int main(void) {
@@ -16,19 +19,34 @@ int main(void) {
     theme_default();
     theme_apply();
 
-    r = repo_load_all();
-    printf("[-] 数据仓库加载 -> %s (code=%d)\n", r == RES_OK ? "OK" : "未完成", r);
+    if ((r = repo_load_all()) != RES_OK) {
+        fprintf(stderr, "数据加载失败 (code=%d)\n", r);
+        console_shutdown();
+        return 1;
+    }
+    if ((r = auth_init()) != RES_OK) {
+        fprintf(stderr, "系统初始化失败 (code=%d)\n", r);
+        console_shutdown();
+        return 1;
+    }
 
-    printf("\n");
-    printf("  ┌──────────────────────────────────────┐\n");
-    printf("  │   宇宙图书馆管理系统（骨架版 v0.1）   │\n");
-    printf("  └──────────────────────────────────────┘\n");
-    printf("  分支: wdy_branch    构建时间: %s %s\n", __DATE__, __TIME__);
-    printf("  模块: ui/ core/ data/ utils/ 均已就位\n");
-    printf("  TODO(M1): 欢迎页 / 登录注册 / 事件循环 / CSV 持久化\n");
-    printf("\n  按 Enter 退出...\n");
+    if (!console_is_tty()) {
+        /* 管道/重定向运行：降级为非交互提示（便于自动化检查） */
+        printf("非交互模式：请在真实控制台（终端）中运行以使用图形界面。\n");
+        printf("数据已就绪。初始管理员账号: admin / admin123\n");
+        console_shutdown();
+        return 0;
+    }
 
-    getchar();
+    screen_goto(SCREEN_WELCOME);
+    screen_draw();
+
+    while (!g_app_quit) {
+        InputEvent ev;
+        if (input_read(&ev, 200)) {
+            if (screen_handle(&ev)) screen_draw();
+        }
+    }
 
     console_shutdown();
     return 0;

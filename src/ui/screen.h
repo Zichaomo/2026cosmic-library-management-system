@@ -8,6 +8,8 @@
 
 typedef enum {
     SCREEN_WELCOME,          /* 欢迎页：登录/注册/帮助/退出 */
+    SCREEN_LOGIN,            /* 登录表单 */
+    SCREEN_REGISTER,         /* 注册读者表单 */
     SCREEN_ADMIN_MENU,       /* 管理员主菜单 */
     SCREEN_BOOK_LIST,        /* 图书列表/检索 */
     SCREEN_BOOK_EDIT,        /* 图书新增/编辑 */
@@ -32,5 +34,11 @@ bool screen_handle(const InputEvent *ev);
 
 /* 返回上一页（Esc / 关闭按钮） */
 void screen_back(void);
+
+/* 在内容区显示一条临时消息（下个操作后清除） */
+void screen_message(const char *text);
+
+/* 应用退出标志（Ctrl+Q 置位，主循环据此退出） */
+extern bool g_app_quit;
 
 #endif /* LMS_UI_SCREEN_H */

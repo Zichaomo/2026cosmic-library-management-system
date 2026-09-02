@@ -33,4 +33,19 @@ Widget *widget_label(int x, int y, const char *text);
 /* 释放控件 */
 void widget_free(Widget *w);
 
+/* ---- 控件状态 ---- */
+/* 设置悬停/选中高亮（由页面在绘制前设置） */
+void widget_set_hover(Widget *w, bool hover);
+void widget_set_selected(Widget *w, bool selected);
+
+/* 列表数据（复制字符串；items 可为 NULL 表示清空） */
+void widget_list_set_items(Widget *w, const char *const *items, size_t count);
+void widget_list_set_sel(Widget *w, int sel);
+int widget_list_sel(const Widget *w);
+/* 滚动（正=向下），自动夹取 */
+void widget_list_scroll(Widget *w, int delta);
+
+/* 获取控件位置与尺寸（用于命中检测/布局） */
+void widget_get_rect(const Widget *wd, int *x, int *y, int *w, int *h);
+
 #endif /* LMS_UI_WIDGET_H */

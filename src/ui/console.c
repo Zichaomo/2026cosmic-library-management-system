@@ -101,3 +101,8 @@ void console_clear(void) {
     FillConsoleOutputAttribute(g_out, 0x1F, (DWORD)(w * h), home, &written);
     SetConsoleCursorPosition(g_out, home);
 }
+
+bool console_is_tty(void) {
+    DWORD mode = 0;
+    return GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &mode) != 0;
+}

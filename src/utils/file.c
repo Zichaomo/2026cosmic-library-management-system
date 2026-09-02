@@ -7,6 +7,7 @@
 
 #ifdef _WIN32
 #include <direct.h>
+#include <windows.h>
 #else
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -35,7 +36,14 @@ Result file_atomic_write(const char *path, const char *content, size_t len) {
     w = fwrite(content, 1, len, f);
     rc = fclose(f);
     if (w != len || rc != 0) return RES_ERR_IO;
+#ifdef _WIN32
+    /* Windows 的 CRT rename 在目标已存在时失败（MSVCRT 语义，errno=EEXIST），
+       无法覆盖已有文件；改用 MoveFileEx 原子替换，满足 PRD §5.1。 */
+    if (!MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        return RES_ERR_IO;
+#else
     if (rename(tmp, path) != 0) return RES_ERR_IO;
+#endif
     return RES_OK;
 }
 

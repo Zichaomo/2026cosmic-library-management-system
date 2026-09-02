@@ -143,7 +143,7 @@ static void update_btn_hover(const InputEvent *ev, Widget **btns, int n) {
 static void ui_build_static(void) {
     if (g_welcome_btns[0]) return;
     g_welcome_btns[0] = widget_button(41, 10, 18, "1. 登录");
-    g_welcome_btns[1] = widget_button(41, 12, 18, "2. 注册读者");
+    g_welcome_btns[1] = widget_button(41, 12, 18, "2. 注册");
     g_welcome_btns[2] = widget_button(41, 14, 18, "3. 帮助");
     g_welcome_btns[3] = widget_button(41, 16, 18, "4. 退出");
     g_login_btns[0] = widget_button(36, 9, 12, "登录");

@@ -1,0 +1,9 @@
+# Build outputs
+/build/
+*.exe
+*.o
+*.obj
+
+# Temporary files created by atomic CSV saves
+*.tmp
+

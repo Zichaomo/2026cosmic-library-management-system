@@ -9,7 +9,10 @@
                 "all"
             ],
             "options": {
-                "cwd": "${workspaceFolder}"
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:LOCALAPPDATA}\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin;${env:PATH}"
+                }
             },
             "problemMatcher": [
                 "$gcc"
@@ -18,6 +21,24 @@
                 "kind": "build",
                 "isDefault": true
             }
+        },
+        {
+            "label": "C: run authentication tests",
+            "type": "shell",
+            "command": "mingw32-make",
+            "args": [
+                "test"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "${env:LOCALAPPDATA}\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin;${env:PATH}"
+                }
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": "test"
         }
     ]
 }

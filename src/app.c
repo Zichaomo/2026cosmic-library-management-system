@@ -90,6 +90,9 @@ static void draw_current_page(const App *app) {
         case APP_PAGE_LOGIN:
             login_screen_draw(&app->console, &app->login_form);
             break;
+        case APP_PAGE_REGISTER:
+            register_screen_draw(&app->console, &app->register_form);
+            break;
         case APP_PAGE_ADMIN_HOME:
             home_screen_draw_admin(
                 &app->console,
@@ -116,7 +119,8 @@ static void activate_welcome_item(App *app) {
             app->page = APP_PAGE_LOGIN;
             break;
         case WELCOME_REGISTER:
-            set_status(app, L"读者注册功能将在后续阶段实现。");
+            register_form_init(&app->register_form);
+            app->page = APP_PAGE_REGISTER;
             break;
         case WELCOME_HELP:
             set_status(
@@ -171,6 +175,7 @@ static void submit_login(App *app) {
     }
 
     const AuthResult result = auth_login(
+        &app->readers,
         app->login_form.username,
         app->login_form.password,
         &app->session
@@ -202,6 +207,99 @@ static void submit_login(App *app) {
                 &app->login_form, L"登录失败：账号已冻结。", true
             );
             break;
+    }
+}
+
+static void open_login_after_registration(App *app) {
+    login_form_init(&app->login_form);
+    wcsncpy(
+        app->login_form.username,
+        app->register_form.reader_no,
+        LOGIN_USERNAME_CAPACITY - 1
+    );
+    app->login_form.username[LOGIN_USERNAME_CAPACITY - 1] = L'\0';
+    app->login_form.username_length = wcslen(app->login_form.username);
+    app->login_form.active_field = LOGIN_FIELD_PASSWORD;
+    login_form_set_message(
+        &app->login_form,
+        L"注册成功，请输入密码登录。",
+        false
+    );
+    register_form_init(&app->register_form);
+    app->page = APP_PAGE_LOGIN;
+}
+
+static void submit_registration(App *app) {
+    const ReaderRegistrationRequest request = {
+        app->register_form.reader_no,
+        app->register_form.name,
+        app->register_form.password,
+        app->register_form.password_confirmation,
+        app->register_form.contact
+    };
+
+    const RegisterResult result = auth_register_reader(
+        &app->readers, &request
+    );
+    switch (result) {
+        case REGISTER_RESULT_SUCCESS:
+            open_login_after_registration(app);
+            break;
+        case REGISTER_RESULT_EMPTY_FIELD:
+            register_form_set_message(
+                &app->register_form,
+                L"注册失败：字段不能为空或内容过长。",
+                true
+            );
+            break;
+        case REGISTER_RESULT_INVALID_READER_NO:
+            register_form_set_message(
+                &app->register_form,
+                L"学号/工号需至少 3 位，只能含文字、数字、_ 或 -。",
+                true
+            );
+            break;
+        case REGISTER_RESULT_WEAK_PASSWORD:
+            register_form_set_message(
+                &app->register_form,
+                L"注册失败：密码不能少于 6 位。",
+                true
+            );
+            break;
+        case REGISTER_RESULT_PASSWORD_MISMATCH:
+            register_form_set_message(
+                &app->register_form,
+                L"注册失败：两次输入的密码不一致。",
+                true
+            );
+            break;
+        case REGISTER_RESULT_DUPLICATE_READER_NO:
+            register_form_set_message(
+                &app->register_form,
+                L"注册失败：该学号/工号已经存在。",
+                true
+            );
+            break;
+        case REGISTER_RESULT_STORAGE_ERROR:
+            register_form_set_message(
+                &app->register_form,
+                L"注册失败：账户数据保存失败。",
+                true
+            );
+            break;
+    }
+}
+
+static void handle_register_event(App *app, const UiEvent *event) {
+    const RegisterAction action = register_screen_handle_event(
+        &app->register_form, event
+    );
+    if (action == REGISTER_ACTION_SUBMIT) {
+        submit_registration(app);
+    } else if (action == REGISTER_ACTION_BACK) {
+        register_form_init(&app->register_form);
+        app->page = APP_PAGE_WELCOME;
+        set_status(app, L"已取消注册。");
     }
 }
 
@@ -336,10 +434,17 @@ bool app_init(App *app) {
     app->home_selection = 0;
     app->running = true;
     login_form_init(&app->login_form);
+    register_form_init(&app->register_form);
     auth_session_clear(&app->session);
+
+    if (!reader_repository_init(&app->readers, L"data")) {
+        console_shutdown(&app->console);
+        return false;
+    }
 
     if (app->console.has_input_mode &&
         !input_init(&app->input, &app->console)) {
+        reader_repository_dispose(&app->readers);
         console_shutdown(&app->console);
         return false;
     }
@@ -374,6 +479,9 @@ int app_run(App *app) {
             case APP_PAGE_LOGIN:
                 handle_login_event(app, &event);
                 break;
+            case APP_PAGE_REGISTER:
+                handle_register_event(app, &event);
+                break;
             case APP_PAGE_ADMIN_HOME:
             case APP_PAGE_READER_HOME:
                 handle_home_event(app, &event);
@@ -394,6 +502,7 @@ void app_shutdown(App *app) {
     }
 
     auth_session_clear(&app->session);
+    reader_repository_dispose(&app->readers);
     console_shutdown(&app->console);
     app->running = false;
 }

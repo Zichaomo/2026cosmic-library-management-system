@@ -11,7 +11,8 @@
 typedef enum {
     APP_PAGE_WELCOME = 0,
     APP_PAGE_LOGIN,
-    APP_PAGE_ADMIN_HOME
+    APP_PAGE_ADMIN_HOME,
+    APP_PAGE_READER_HOME
 } AppPage;
 
 typedef struct {
@@ -21,6 +22,7 @@ typedef struct {
     UserSession session;
     AppPage page;
     int welcome_selection;
+    int home_selection;
     wchar_t status_message[96];
     bool running;
 } App;

@@ -9,9 +9,6 @@
 typedef enum {
     UI_EVENT_NONE = 0,
     UI_EVENT_KEY,
-    UI_EVENT_MOUSE_MOVE,
-    UI_EVENT_MOUSE_CLICK,
-    UI_EVENT_MOUSE_WHEEL,
     UI_EVENT_RESIZE
 } UiEventType;
 
@@ -19,6 +16,7 @@ typedef enum {
     UI_KEY_NONE = 0,
     UI_KEY_CHARACTER,
     UI_KEY_TAB,
+    UI_KEY_SHIFT_TAB,
     UI_KEY_ENTER,
     UI_KEY_ESCAPE,
     UI_KEY_BACKSPACE,
@@ -35,31 +33,19 @@ typedef enum {
     UI_KEY_CTRL_Q
 } UiKey;
 
-typedef enum {
-    UI_MOUSE_BUTTON_NONE = 0,
-    UI_MOUSE_BUTTON_LEFT,
-    UI_MOUSE_BUTTON_RIGHT
-} UiMouseButton;
-
 typedef struct {
     UiEventType type;
     UiKey key;
     wchar_t character;
-    short mouse_x;
-    short mouse_y;
-    UiMouseButton mouse_button;
-    short wheel_delta;
     short width;
     short height;
 } UiEvent;
 
 typedef struct {
     Console *console;
-    DWORD previous_mouse_buttons;
 } Input;
 
 bool input_init(Input *input, Console *console);
 bool input_read(Input *input, UiEvent *event);
 
 #endif
-

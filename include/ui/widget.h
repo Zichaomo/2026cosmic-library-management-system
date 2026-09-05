@@ -12,7 +12,6 @@ typedef struct {
     short height;
 } UiRect;
 
-bool ui_rect_contains(const UiRect *rect, short x, short y);
 void widget_draw_box(
     const Console *console,
     const UiRect *rect,
@@ -33,4 +32,3 @@ void widget_draw_input(
 );
 
 #endif
-

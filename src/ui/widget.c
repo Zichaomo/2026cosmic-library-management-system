@@ -3,11 +3,6 @@
 #include <stddef.h>
 #include <wchar.h>
 
-bool ui_rect_contains(const UiRect *rect, short x, short y) {
-    return rect != NULL && x >= rect->x && y >= rect->y &&
-           x < rect->x + rect->width && y < rect->y + rect->height;
-}
-
 void widget_draw_box(
     const Console *console,
     const UiRect *rect,
@@ -132,4 +127,3 @@ void widget_draw_input(
         CONSOLE_COLOR_WHITE, CONSOLE_COLOR_BLACK
     );
 }
-

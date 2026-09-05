@@ -1,10 +1,10 @@
 #include "app.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
 
+#include "ui/home_screen.h"
 #include "ui/screen.h"
 #include "ui/widget.h"
 
@@ -64,7 +64,7 @@ static void draw_welcome_page(const App *app) {
         L" 欢迎页 ",
         app->status_message[0] != L'\0'
             ? app->status_message
-            : L"方向键或 Tab 选择  |  Enter 确认  |  鼠标单击  |  Ctrl+Q 退出"
+            : L"方向键或 Tab 选择  |  Enter 确认  |  Ctrl+Q 退出"
     );
 
     if (!get_welcome_buttons(&app->console, buttons)) {
@@ -81,35 +81,6 @@ static void draw_welcome_page(const App *app) {
     }
 }
 
-static void draw_admin_home(const App *app) {
-    ScreenLayout layout;
-    wchar_t status[128];
-
-    swprintf(
-        status,
-        128,
-        L"登录成功  |  当前用户：%ls  |  角色：管理员  |  Esc 退出登录",
-        app->session.username
-    );
-    screen_draw_shell(
-        &app->console,
-        L"宇宙图书馆管理系统",
-        L" 管理员主页 ",
-        status
-    );
-
-    if (screen_get_layout(&app->console, &layout)) {
-        console_write_at(
-            &app->console,
-            4,
-            (short)(layout.content_y + 3),
-            L"管理员登录验证成功，业务菜单将在下一阶段实现。",
-            CONSOLE_COLOR_GREEN,
-            CONSOLE_COLOR_BLACK
-        );
-    }
-}
-
 static void draw_current_page(const App *app) {
     console_clear(&app->console);
     switch (app->page) {
@@ -120,7 +91,20 @@ static void draw_current_page(const App *app) {
             login_screen_draw(&app->console, &app->login_form);
             break;
         case APP_PAGE_ADMIN_HOME:
-            draw_admin_home(app);
+            home_screen_draw_admin(
+                &app->console,
+                &app->session,
+                app->home_selection,
+                app->status_message
+            );
+            break;
+        case APP_PAGE_READER_HOME:
+            home_screen_draw_reader(
+                &app->console,
+                &app->session,
+                app->home_selection,
+                app->status_message
+            );
             break;
     }
 }
@@ -137,7 +121,7 @@ static void activate_welcome_item(App *app) {
         case WELCOME_HELP:
             set_status(
                 app,
-                L"帮助：使用方向键、Tab、Enter 或鼠标操作；Ctrl+Q 退出。"
+                L"帮助：使用方向键、Tab 和 Enter 操作；Ctrl+Q 退出。"
             );
             break;
         case WELCOME_EXIT:
@@ -147,8 +131,6 @@ static void activate_welcome_item(App *app) {
 }
 
 static void handle_welcome_event(App *app, const UiEvent *event) {
-    UiRect buttons[WELCOME_ITEM_COUNT];
-
     if (event->type == UI_EVENT_KEY) {
         switch (event->key) {
             case UI_KEY_TAB:
@@ -157,6 +139,7 @@ static void handle_welcome_event(App *app, const UiEvent *event) {
                     (app->welcome_selection + 1) % WELCOME_ITEM_COUNT;
                 app->status_message[0] = L'\0';
                 break;
+            case UI_KEY_SHIFT_TAB:
             case UI_KEY_UP:
                 app->welcome_selection =
                     (app->welcome_selection + WELCOME_ITEM_COUNT - 1) %
@@ -174,24 +157,6 @@ static void handle_welcome_event(App *app, const UiEvent *event) {
                 break;
             default:
                 break;
-        }
-        return;
-    }
-
-    if ((event->type == UI_EVENT_MOUSE_MOVE ||
-         event->type == UI_EVENT_MOUSE_CLICK) &&
-        get_welcome_buttons(&app->console, buttons)) {
-        for (int index = 0; index < WELCOME_ITEM_COUNT; ++index) {
-            if (ui_rect_contains(
-                    &buttons[index], event->mouse_x, event->mouse_y
-                )) {
-                app->welcome_selection = index;
-                if (event->type == UI_EVENT_MOUSE_CLICK &&
-                    event->mouse_button == UI_MOUSE_BUTTON_LEFT) {
-                    activate_welcome_item(app);
-                }
-                return;
-            }
         }
     }
 }
@@ -213,7 +178,11 @@ static void submit_login(App *app) {
     switch (result) {
         case AUTH_RESULT_SUCCESS:
             login_form_clear_password(&app->login_form);
-            app->page = APP_PAGE_ADMIN_HOME;
+            app->home_selection = 0;
+            app->status_message[0] = L'\0';
+            app->page = app->session.role == USER_ROLE_ADMIN
+                ? APP_PAGE_ADMIN_HOME
+                : APP_PAGE_READER_HOME;
             break;
         case AUTH_RESULT_ACCOUNT_NOT_FOUND:
             login_form_clear_password(&app->login_form);
@@ -238,7 +207,7 @@ static void submit_login(App *app) {
 
 static void handle_login_event(App *app, const UiEvent *event) {
     const LoginAction action = login_screen_handle_event(
-        &app->login_form, &app->console, event
+        &app->login_form, event
     );
     if (action == LOGIN_ACTION_SUBMIT) {
         submit_login(app);
@@ -249,12 +218,106 @@ static void handle_login_event(App *app, const UiEvent *event) {
     }
 }
 
-static void handle_admin_home_event(App *app, const UiEvent *event) {
-    if (event->type == UI_EVENT_KEY && event->key == UI_KEY_ESCAPE) {
-        auth_session_clear(&app->session);
-        login_form_init(&app->login_form);
-        app->page = APP_PAGE_WELCOME;
-        set_status(app, L"已退出登录。");
+static void logout_to_welcome(App *app) {
+    auth_session_clear(&app->session);
+    login_form_init(&app->login_form);
+    app->page = APP_PAGE_WELCOME;
+    app->welcome_selection = WELCOME_LOGIN;
+    app->home_selection = 0;
+    set_status(app, L"已退出登录。");
+}
+
+static void activate_admin_item(App *app) {
+    switch ((AdminMenuItem)app->home_selection) {
+        case ADMIN_MENU_BOOKS:
+            set_status(app, L"已选择图书管理，下一阶段接入图书数据。");
+            break;
+        case ADMIN_MENU_READERS:
+            set_status(app, L"已选择读者管理，下一阶段接入读者数据。");
+            break;
+        case ADMIN_MENU_LOANS:
+            set_status(app, L"已选择借阅管理，下一阶段接入借还业务。");
+            break;
+        case ADMIN_MENU_RESERVATIONS:
+            set_status(app, L"已选择预约管理，功能尚未实现。");
+            break;
+        case ADMIN_MENU_FINES:
+            set_status(app, L"已选择罚款管理，功能尚未实现。");
+            break;
+        case ADMIN_MENU_STATS:
+            set_status(app, L"已选择统计报表，功能尚未实现。");
+            break;
+        case ADMIN_MENU_LOGOUT:
+            logout_to_welcome(app);
+            break;
+        case ADMIN_MENU_COUNT:
+            break;
+    }
+}
+
+static void activate_reader_item(App *app) {
+    switch ((ReaderMenuItem)app->home_selection) {
+        case READER_MENU_SEARCH:
+            set_status(app, L"已选择图书检索，下一阶段接入图书数据。");
+            break;
+        case READER_MENU_MY_LOANS:
+            set_status(app, L"已选择我的借阅，功能尚未实现。");
+            break;
+        case READER_MENU_MY_RESERVATIONS:
+            set_status(app, L"已选择我的预约，功能尚未实现。");
+            break;
+        case READER_MENU_MY_FINES:
+            set_status(app, L"已选择我的罚款，功能尚未实现。");
+            break;
+        case READER_MENU_LOGOUT:
+            logout_to_welcome(app);
+            break;
+        case READER_MENU_COUNT:
+            break;
+    }
+}
+
+static void handle_home_event(App *app, const UiEvent *event) {
+    if (event->type != UI_EVENT_KEY) {
+        return;
+    }
+
+    const int item_count = app->page == APP_PAGE_ADMIN_HOME
+        ? ADMIN_MENU_COUNT
+        : READER_MENU_COUNT;
+    switch (event->key) {
+        case UI_KEY_TAB:
+        case UI_KEY_DOWN:
+            app->home_selection = (app->home_selection + 1) % item_count;
+            app->status_message[0] = L'\0';
+            break;
+        case UI_KEY_SHIFT_TAB:
+        case UI_KEY_UP:
+            app->home_selection =
+                (app->home_selection + item_count - 1) % item_count;
+            app->status_message[0] = L'\0';
+            break;
+        case UI_KEY_ENTER:
+            if (app->page == APP_PAGE_ADMIN_HOME) {
+                activate_admin_item(app);
+            } else {
+                activate_reader_item(app);
+            }
+            break;
+        case UI_KEY_ESCAPE:
+            logout_to_welcome(app);
+            break;
+        case UI_KEY_F1:
+            set_status(
+                app,
+                L"帮助：↑↓或 Tab 选择功能，Enter 进入，Esc 退出登录。"
+            );
+            break;
+        case UI_KEY_F5:
+            set_status(app, L"当前页面已刷新。");
+            break;
+        default:
+            break;
     }
 }
 
@@ -270,6 +333,7 @@ bool app_init(App *app) {
 
     app->page = APP_PAGE_WELCOME;
     app->welcome_selection = WELCOME_LOGIN;
+    app->home_selection = 0;
     app->running = true;
     login_form_init(&app->login_form);
     auth_session_clear(&app->session);
@@ -311,7 +375,8 @@ int app_run(App *app) {
                 handle_login_event(app, &event);
                 break;
             case APP_PAGE_ADMIN_HOME:
-                handle_admin_home_event(app, &event);
+            case APP_PAGE_READER_HOME:
+                handle_home_event(app, &event);
                 break;
         }
 

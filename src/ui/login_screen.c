@@ -186,18 +186,16 @@ void login_screen_draw(const Console *console, const LoginForm *form) {
 
 LoginAction login_screen_handle_event(
     LoginForm *form,
-    const Console *console,
     const UiEvent *event
 ) {
-    LoginLayout layout;
-
-    if (form == NULL || console == NULL || event == NULL) {
+    if (form == NULL || event == NULL) {
         return LOGIN_ACTION_NONE;
     }
 
     if (event->type == UI_EVENT_KEY) {
         switch (event->key) {
             case UI_KEY_TAB:
+            case UI_KEY_SHIFT_TAB:
             case UI_KEY_UP:
             case UI_KEY_DOWN:
                 form->active_field = form->active_field == LOGIN_FIELD_USERNAME
@@ -218,31 +216,7 @@ LoginAction login_screen_handle_event(
             default:
                 break;
         }
-        return LOGIN_ACTION_NONE;
-    }
-
-    if (event->type == UI_EVENT_MOUSE_CLICK &&
-        event->mouse_button == UI_MOUSE_BUTTON_LEFT &&
-        get_login_layout(console, &layout)) {
-        if (ui_rect_contains(
-                &layout.username, event->mouse_x, event->mouse_y
-            )) {
-            form->active_field = LOGIN_FIELD_USERNAME;
-        } else if (ui_rect_contains(
-                       &layout.password, event->mouse_x, event->mouse_y
-                   )) {
-            form->active_field = LOGIN_FIELD_PASSWORD;
-        } else if (ui_rect_contains(
-                       &layout.submit, event->mouse_x, event->mouse_y
-                   )) {
-            return LOGIN_ACTION_SUBMIT;
-        } else if (ui_rect_contains(
-                       &layout.back, event->mouse_x, event->mouse_y
-                   )) {
-            return LOGIN_ACTION_BACK;
-        }
     }
 
     return LOGIN_ACTION_NONE;
 }
-

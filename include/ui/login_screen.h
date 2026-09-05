@@ -44,9 +44,7 @@ void login_form_set_message(
 void login_screen_draw(const Console *console, const LoginForm *form);
 LoginAction login_screen_handle_event(
     LoginForm *form,
-    const Console *console,
     const UiEvent *event
 );
 
 #endif
-

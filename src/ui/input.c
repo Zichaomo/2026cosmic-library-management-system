@@ -14,7 +14,9 @@ static UiKey map_virtual_key(const KEY_EVENT_RECORD *key_event) {
 
     switch (key_event->wVirtualKeyCode) {
         case VK_TAB:
-            return UI_KEY_TAB;
+            return (key_event->dwControlKeyState & SHIFT_PRESSED) != 0
+                ? UI_KEY_SHIFT_TAB
+                : UI_KEY_TAB;
         case VK_RETURN:
             return UI_KEY_ENTER;
         case VK_ESCAPE:
@@ -51,29 +53,12 @@ static UiKey map_virtual_key(const KEY_EVENT_RECORD *key_event) {
     return UI_KEY_NONE;
 }
 
-static void map_mouse_position(
-    const Input *input,
-    const MOUSE_EVENT_RECORD *mouse_event,
-    short *x,
-    short *y
-) {
-    CONSOLE_SCREEN_BUFFER_INFO info;
-
-    *x = mouse_event->dwMousePosition.X;
-    *y = mouse_event->dwMousePosition.Y;
-    if (GetConsoleScreenBufferInfo(input->console->output, &info)) {
-        *x = (short)(*x - info.srWindow.Left);
-        *y = (short)(*y - info.srWindow.Top);
-    }
-}
-
 bool input_init(Input *input, Console *console) {
     if (input == NULL || console == NULL || !console->has_input_mode) {
         return false;
     }
 
     input->console = console;
-    input->previous_mouse_buttons = 0;
     return true;
 }
 
@@ -104,50 +89,6 @@ bool input_read(Input *input, UiEvent *event) {
             continue;
         }
 
-        if (record.EventType == MOUSE_EVENT) {
-            MOUSE_EVENT_RECORD *mouse = &record.Event.MouseEvent;
-            map_mouse_position(
-                input, mouse, &event->mouse_x, &event->mouse_y
-            );
-
-            if ((mouse->dwEventFlags & MOUSE_WHEELED) != 0) {
-                event->type = UI_EVENT_MOUSE_WHEEL;
-                event->wheel_delta = (short)HIWORD(mouse->dwButtonState);
-                return true;
-            }
-
-            if (mouse->dwEventFlags == MOUSE_MOVED) {
-                event->type = UI_EVENT_MOUSE_MOVE;
-                input->previous_mouse_buttons = mouse->dwButtonState;
-                return true;
-            }
-
-            const DWORD current_buttons = mouse->dwButtonState;
-            const bool left_pressed =
-                (current_buttons & FROM_LEFT_1ST_BUTTON_PRESSED) != 0;
-            const bool left_was_pressed =
-                (input->previous_mouse_buttons &
-                 FROM_LEFT_1ST_BUTTON_PRESSED) != 0;
-            const bool right_pressed =
-                (current_buttons & RIGHTMOST_BUTTON_PRESSED) != 0;
-            const bool right_was_pressed =
-                (input->previous_mouse_buttons &
-                 RIGHTMOST_BUTTON_PRESSED) != 0;
-
-            input->previous_mouse_buttons = current_buttons;
-            if (left_pressed && !left_was_pressed) {
-                event->type = UI_EVENT_MOUSE_CLICK;
-                event->mouse_button = UI_MOUSE_BUTTON_LEFT;
-                return true;
-            }
-            if (right_pressed && !right_was_pressed) {
-                event->type = UI_EVENT_MOUSE_CLICK;
-                event->mouse_button = UI_MOUSE_BUTTON_RIGHT;
-                return true;
-            }
-            continue;
-        }
-
         if (record.EventType == WINDOW_BUFFER_SIZE_EVENT) {
             event->type = UI_EVENT_RESIZE;
             console_get_size(
@@ -157,4 +98,3 @@ bool input_read(Input *input, UiEvent *event) {
         }
     }
 }
-

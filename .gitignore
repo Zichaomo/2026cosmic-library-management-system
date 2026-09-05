@@ -17,6 +17,7 @@
 /data/*.backup
 /data/*.corrupt
 /tests/tmp_data/
+/tests/tmp_circulation/
 *.log
 
 # CSV 原子保存及编辑器产生的临时文件

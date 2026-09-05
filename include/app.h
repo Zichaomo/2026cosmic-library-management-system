@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "core/auth.h"
+#include "data/library_repository.h"
 #include "data/reader_repository.h"
 #include "ui/console.h"
 #include "ui/input.h"
@@ -15,7 +16,12 @@ typedef enum {
     APP_PAGE_LOGIN,
     APP_PAGE_REGISTER,
     APP_PAGE_ADMIN_HOME,
-    APP_PAGE_READER_HOME
+    APP_PAGE_READER_HOME,
+    APP_PAGE_BOOK_CATALOG,
+    APP_PAGE_READER_LOANS,
+    APP_PAGE_READER_FINES,
+    APP_PAGE_ADMIN_LOANS,
+    APP_PAGE_ADMIN_FINES
 } AppPage;
 
 typedef struct {
@@ -24,11 +30,13 @@ typedef struct {
     LoginForm login_form;
     RegisterForm register_form;
     ReaderRepository readers;
+    LibraryRepository library;
     UserSession session;
     AppPage page;
     int welcome_selection;
     int home_selection;
-    wchar_t status_message[96];
+    int list_selection;
+    wchar_t status_message[192];
     bool running;
 } App;
 

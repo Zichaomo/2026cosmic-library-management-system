@@ -4,6 +4,7 @@
 #include <string.h>
 #include <wchar.h>
 
+#include "ui/circulation_screen.h"
 #include "ui/home_screen.h"
 #include "ui/screen.h"
 #include "ui/widget.h"
@@ -45,8 +46,15 @@ static void set_status(App *app, const wchar_t *message) {
     if (app == NULL || message == NULL) {
         return;
     }
-    wcsncpy(app->status_message, message, 95);
-    app->status_message[95] = L'\0';
+    wcsncpy(app->status_message, message, 191);
+    app->status_message[191] = L'\0';
+}
+
+static int current_reader_id(const App *app) {
+    const ReaderAccount *reader = reader_repository_find_by_number(
+        &app->readers, app->session.username
+    );
+    return reader != NULL ? reader->id : 0;
 }
 
 static void draw_welcome_page(const App *app) {
@@ -107,6 +115,36 @@ static void draw_current_page(const App *app) {
                 &app->session,
                 app->home_selection,
                 app->status_message
+            );
+            break;
+        case APP_PAGE_BOOK_CATALOG:
+            circulation_screen_draw_books(
+                &app->console, &app->library,
+                app->list_selection, app->status_message
+            );
+            break;
+        case APP_PAGE_READER_LOANS:
+            circulation_screen_draw_reader_loans(
+                &app->console, &app->library, current_reader_id(app),
+                app->list_selection, app->status_message
+            );
+            break;
+        case APP_PAGE_READER_FINES:
+            circulation_screen_draw_reader_fines(
+                &app->console, &app->library, current_reader_id(app),
+                app->list_selection, app->status_message
+            );
+            break;
+        case APP_PAGE_ADMIN_LOANS:
+            circulation_screen_draw_admin_loans(
+                &app->console, &app->readers, &app->library,
+                app->list_selection, app->status_message
+            );
+            break;
+        case APP_PAGE_ADMIN_FINES:
+            circulation_screen_draw_admin_fines(
+                &app->console, &app->readers, &app->library,
+                app->list_selection, app->status_message
             );
             break;
     }
@@ -334,13 +372,17 @@ static void activate_admin_item(App *app) {
             set_status(app, L"已选择读者管理，下一阶段接入读者数据。");
             break;
         case ADMIN_MENU_LOANS:
-            set_status(app, L"已选择借阅管理，下一阶段接入借还业务。");
+            app->list_selection = 0;
+            app->status_message[0] = L'\0';
+            app->page = APP_PAGE_ADMIN_LOANS;
             break;
         case ADMIN_MENU_RESERVATIONS:
             set_status(app, L"已选择预约管理，功能尚未实现。");
             break;
         case ADMIN_MENU_FINES:
-            set_status(app, L"已选择罚款管理，功能尚未实现。");
+            app->list_selection = 0;
+            app->status_message[0] = L'\0';
+            app->page = APP_PAGE_ADMIN_FINES;
             break;
         case ADMIN_MENU_STATS:
             set_status(app, L"已选择统计报表，功能尚未实现。");
@@ -356,16 +398,22 @@ static void activate_admin_item(App *app) {
 static void activate_reader_item(App *app) {
     switch ((ReaderMenuItem)app->home_selection) {
         case READER_MENU_SEARCH:
-            set_status(app, L"已选择图书检索，下一阶段接入图书数据。");
+            app->list_selection = 0;
+            app->status_message[0] = L'\0';
+            app->page = APP_PAGE_BOOK_CATALOG;
             break;
         case READER_MENU_MY_LOANS:
-            set_status(app, L"已选择我的借阅，功能尚未实现。");
+            app->list_selection = 0;
+            app->status_message[0] = L'\0';
+            app->page = APP_PAGE_READER_LOANS;
             break;
         case READER_MENU_MY_RESERVATIONS:
             set_status(app, L"已选择我的预约，功能尚未实现。");
             break;
         case READER_MENU_MY_FINES:
-            set_status(app, L"已选择我的罚款，功能尚未实现。");
+            app->list_selection = 0;
+            app->status_message[0] = L'\0';
+            app->page = APP_PAGE_READER_FINES;
             break;
         case READER_MENU_LOGOUT:
             logout_to_welcome(app);
@@ -419,6 +467,296 @@ static void handle_home_event(App *app, const UiEvent *event) {
     }
 }
 
+static int circulation_item_count(const App *app) {
+    const int reader_id = current_reader_id(app);
+    int count = 0;
+    switch (app->page) {
+        case APP_PAGE_BOOK_CATALOG:
+            return (int)app->library.book_count;
+        case APP_PAGE_ADMIN_LOANS:
+            return (int)app->library.loan_count;
+        case APP_PAGE_ADMIN_FINES:
+            return (int)app->library.fine_count;
+        case APP_PAGE_READER_LOANS:
+            for (size_t i = 0; i < app->library.loan_count; ++i) {
+                if (app->library.loans[i].reader_id == reader_id) {
+                    ++count;
+                }
+            }
+            return count;
+        case APP_PAGE_READER_FINES:
+            for (size_t i = 0; i < app->library.fine_count; ++i) {
+                if (app->library.fines[i].reader_id == reader_id) {
+                    ++count;
+                }
+            }
+            return count;
+        default:
+            return 0;
+    }
+}
+
+static const Loan *selected_reader_loan(const App *app) {
+    const int reader_id = current_reader_id(app);
+    int item = 0;
+    for (size_t i = 0; i < app->library.loan_count; ++i) {
+        if (app->library.loans[i].reader_id != reader_id) {
+            continue;
+        }
+        if (item++ == app->list_selection) {
+            return &app->library.loans[i];
+        }
+    }
+    return NULL;
+}
+
+static const Fine *selected_reader_fine(const App *app) {
+    const int reader_id = current_reader_id(app);
+    int item = 0;
+    for (size_t i = 0; i < app->library.fine_count; ++i) {
+        if (app->library.fines[i].reader_id != reader_id) {
+            continue;
+        }
+        if (item++ == app->list_selection) {
+            return &app->library.fines[i];
+        }
+    }
+    return NULL;
+}
+
+static void show_library_result(App *app, LibraryResult result) {
+    switch (result) {
+        case LIBRARY_RESULT_SUCCESS:
+            set_status(app, L"操作成功。");
+            break;
+        case LIBRARY_RESULT_BOOK_NOT_FOUND:
+            set_status(app, L"操作失败：图书不存在。");
+            break;
+        case LIBRARY_RESULT_BOOK_UNAVAILABLE:
+            set_status(app, L"操作失败：该书无可借副本或已停借。");
+            break;
+        case LIBRARY_RESULT_READER_NOT_FOUND:
+            set_status(app, L"操作失败：读者不存在。");
+            break;
+        case LIBRARY_RESULT_READER_BLOCKED:
+            set_status(app, L"操作失败：账号受限或欠款已达到 10 元。");
+            break;
+        case LIBRARY_RESULT_LOAN_LIMIT:
+            set_status(app, L"操作失败：最多同时借阅 5 本图书。");
+            break;
+        case LIBRARY_RESULT_ALREADY_BORROWED:
+            set_status(app, L"操作失败：你已经借阅了这本书。");
+            break;
+        case LIBRARY_RESULT_LOAN_NOT_FOUND:
+            set_status(app, L"操作失败：借阅记录不存在。");
+            break;
+        case LIBRARY_RESULT_LOAN_RETURNED:
+            set_status(app, L"操作失败：该借阅记录已经归还。");
+            break;
+        case LIBRARY_RESULT_RENEW_LIMIT:
+            set_status(app, L"操作失败：每条借阅记录只能续借一次。");
+            break;
+        case LIBRARY_RESULT_LOAN_OVERDUE:
+            set_status(app, L"操作失败：图书已经逾期，不能续借。");
+            break;
+        case LIBRARY_RESULT_FINE_NOT_FOUND:
+            set_status(app, L"操作失败：罚款单不存在。");
+            break;
+        case LIBRARY_RESULT_FINE_PAID:
+            set_status(app, L"操作失败：该罚款已经缴纳。");
+            break;
+        case LIBRARY_RESULT_STORAGE_ERROR:
+            set_status(app, L"操作失败：数据保存失败。");
+            break;
+    }
+}
+
+static void activate_circulation_item(App *app, bool renew) {
+    LibraryResult result;
+    if (app->page == APP_PAGE_BOOK_CATALOG) {
+        if (app->list_selection < 0 ||
+            (size_t)app->list_selection >= app->library.book_count) {
+            set_status(app, L"当前没有可选择的图书。");
+            return;
+        }
+        int loan_id = 0;
+        result = library_borrow_book(
+            &app->library, &app->readers, current_reader_id(app),
+            app->library.books[app->list_selection].id, &loan_id
+        );
+        if (result == LIBRARY_RESULT_SUCCESS) {
+            wchar_t message[192];
+            swprintf(message, 192, L"借书成功，借阅单号：%d，借期 30 天。", loan_id);
+            set_status(app, message);
+        } else {
+            show_library_result(app, result);
+        }
+        return;
+    }
+
+    if (app->page == APP_PAGE_READER_LOANS) {
+        const Loan *selected = selected_reader_loan(app);
+        if (selected == NULL) {
+            set_status(app, L"当前没有借阅记录。");
+            return;
+        }
+        const int loan_id = selected->id;
+        if (renew) {
+            result = library_renew_loan(&app->library, loan_id);
+            if (result == LIBRARY_RESULT_SUCCESS) {
+                set_status(app, L"续借成功，应还日期已延长 15 天。");
+            } else {
+                show_library_result(app, result);
+            }
+        } else {
+            int fine_cents = 0;
+            result = library_return_loan(&app->library, loan_id, &fine_cents);
+            if (result == LIBRARY_RESULT_SUCCESS && fine_cents > 0) {
+                wchar_t message[192];
+                swprintf(
+                    message, 192,
+                    L"还书成功；因逾期已生成 %.2f 元罚款。",
+                    fine_cents / 100.0
+                );
+                set_status(app, message);
+            } else if (result == LIBRARY_RESULT_SUCCESS) {
+                set_status(app, L"还书成功，馆藏可借数量已恢复。");
+            } else {
+                show_library_result(app, result);
+            }
+        }
+        return;
+    }
+
+    if (app->page == APP_PAGE_READER_FINES) {
+        const Fine *selected = selected_reader_fine(app);
+        if (selected == NULL) {
+            set_status(app, L"当前没有罚款记录。");
+            return;
+        }
+        result = library_pay_fine(&app->library, selected->id);
+        if (result == LIBRARY_RESULT_SUCCESS) {
+            set_status(app, L"模拟缴费成功，缴费时间已记录。");
+        } else {
+            show_library_result(app, result);
+        }
+        return;
+    }
+
+    if (app->page == APP_PAGE_ADMIN_LOANS) {
+        if (app->list_selection < 0 ||
+            (size_t)app->list_selection >= app->library.loan_count) {
+            set_status(app, L"当前没有借阅记录。");
+            return;
+        }
+        int fine_cents = 0;
+        result = library_return_loan(
+            &app->library,
+            app->library.loans[app->list_selection].id,
+            &fine_cents
+        );
+        if (result == LIBRARY_RESULT_SUCCESS && fine_cents > 0) {
+            wchar_t message[192];
+            swprintf(
+                message, 192, L"代办还书成功，生成罚款 %.2f 元。",
+                fine_cents / 100.0
+            );
+            set_status(app, message);
+        } else if (result == LIBRARY_RESULT_SUCCESS) {
+            set_status(app, L"管理员代办还书成功。");
+        } else {
+            show_library_result(app, result);
+        }
+        return;
+    }
+
+    if (app->page == APP_PAGE_ADMIN_FINES) {
+        if (app->list_selection < 0 ||
+            (size_t)app->list_selection >= app->library.fine_count) {
+            set_status(app, L"当前没有罚款记录。");
+            return;
+        }
+        result = library_pay_fine(
+            &app->library,
+            app->library.fines[app->list_selection].id
+        );
+        if (result == LIBRARY_RESULT_SUCCESS) {
+            set_status(app, L"管理员代收成功，罚款已标记为已缴。");
+        } else {
+            show_library_result(app, result);
+        }
+    }
+}
+
+static void handle_circulation_event(App *app, const UiEvent *event) {
+    if (event->type != UI_EVENT_KEY) {
+        return;
+    }
+    const int item_count = circulation_item_count(app);
+    switch (event->key) {
+        case UI_KEY_TAB:
+        case UI_KEY_DOWN:
+            if (item_count > 0) {
+                app->list_selection = (app->list_selection + 1) % item_count;
+            }
+            app->status_message[0] = L'\0';
+            break;
+        case UI_KEY_SHIFT_TAB:
+        case UI_KEY_UP:
+            if (item_count > 0) {
+                app->list_selection =
+                    (app->list_selection + item_count - 1) % item_count;
+            }
+            app->status_message[0] = L'\0';
+            break;
+        case UI_KEY_HOME:
+            app->list_selection = 0;
+            break;
+        case UI_KEY_END:
+            app->list_selection = item_count > 0 ? item_count - 1 : 0;
+            break;
+        case UI_KEY_ENTER:
+            activate_circulation_item(app, false);
+            break;
+        case UI_KEY_CHARACTER:
+            if (app->page == APP_PAGE_READER_LOANS &&
+                (event->character == L'r' || event->character == L'R')) {
+                activate_circulation_item(app, true);
+            } else if (app->page == APP_PAGE_ADMIN_LOANS &&
+                (event->character == L'o' || event->character == L'O')) {
+                if (app->list_selection < 0 ||
+                    (size_t)app->list_selection >= app->library.loan_count) {
+                    set_status(app, L"当前没有借阅记录。");
+                } else {
+                    const LibraryResult result =
+                        library_mark_loan_overdue_for_demo(
+                            &app->library,
+                            app->library.loans[app->list_selection].id,
+                            3
+                        );
+                    if (result == LIBRARY_RESULT_SUCCESS) {
+                        set_status(
+                            app,
+                            L"演示：该借阅单已模拟逾期 3 天，可按 Enter 还书生成罚款。"
+                        );
+                    } else {
+                        show_library_result(app, result);
+                    }
+                }
+            }
+            break;
+        case UI_KEY_ESCAPE:
+            app->list_selection = 0;
+            app->status_message[0] = L'\0';
+            app->page = (app->page == APP_PAGE_ADMIN_LOANS ||
+                         app->page == APP_PAGE_ADMIN_FINES)
+                ? APP_PAGE_ADMIN_HOME : APP_PAGE_READER_HOME;
+            break;
+        default:
+            break;
+    }
+}
+
 bool app_init(App *app) {
     if (app == NULL) {
         return false;
@@ -442,8 +780,15 @@ bool app_init(App *app) {
         return false;
     }
 
+    if (!library_repository_init(&app->library, L"data")) {
+        reader_repository_dispose(&app->readers);
+        console_shutdown(&app->console);
+        return false;
+    }
+
     if (app->console.has_input_mode &&
         !input_init(&app->input, &app->console)) {
+        library_repository_dispose(&app->library);
         reader_repository_dispose(&app->readers);
         console_shutdown(&app->console);
         return false;
@@ -486,6 +831,13 @@ int app_run(App *app) {
             case APP_PAGE_READER_HOME:
                 handle_home_event(app, &event);
                 break;
+            case APP_PAGE_BOOK_CATALOG:
+            case APP_PAGE_READER_LOANS:
+            case APP_PAGE_READER_FINES:
+            case APP_PAGE_ADMIN_LOANS:
+            case APP_PAGE_ADMIN_FINES:
+                handle_circulation_event(app, &event);
+                break;
         }
 
         if (app->running) {
@@ -502,6 +854,7 @@ void app_shutdown(App *app) {
     }
 
     auth_session_clear(&app->session);
+    library_repository_dispose(&app->library);
     reader_repository_dispose(&app->readers);
     console_shutdown(&app->console);
     app->running = false;

@@ -16,6 +16,7 @@
 /data/*.bak
 /data/*.backup
 /data/*.corrupt
+/tests/tmp_data/
 *.log
 
 # CSV 原子保存及编辑器产生的临时文件

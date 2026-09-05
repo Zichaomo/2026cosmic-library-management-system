@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <wchar.h>
 
+#include "data/reader_repository.h"
+
 typedef enum {
     USER_ROLE_NONE = 0,
     USER_ROLE_ADMIN,
@@ -23,12 +25,34 @@ typedef enum {
     AUTH_RESULT_ACCOUNT_FROZEN
 } AuthResult;
 
+typedef struct {
+    const wchar_t *reader_no;
+    const wchar_t *name;
+    const wchar_t *password;
+    const wchar_t *password_confirmation;
+    const wchar_t *contact;
+} ReaderRegistrationRequest;
+
+typedef enum {
+    REGISTER_RESULT_SUCCESS = 0,
+    REGISTER_RESULT_EMPTY_FIELD,
+    REGISTER_RESULT_INVALID_READER_NO,
+    REGISTER_RESULT_WEAK_PASSWORD,
+    REGISTER_RESULT_PASSWORD_MISMATCH,
+    REGISTER_RESULT_DUPLICATE_READER_NO,
+    REGISTER_RESULT_STORAGE_ERROR
+} RegisterResult;
+
 void auth_session_clear(UserSession *session);
 AuthResult auth_login(
+    const ReaderRepository *readers,
     const wchar_t *username,
     const wchar_t *password,
     UserSession *session
 );
+RegisterResult auth_register_reader(
+    ReaderRepository *readers,
+    const ReaderRegistrationRequest *request
+);
 
 #endif
-

@@ -4,13 +4,16 @@
 #include <stdbool.h>
 
 #include "core/auth.h"
+#include "data/reader_repository.h"
 #include "ui/console.h"
 #include "ui/input.h"
 #include "ui/login_screen.h"
+#include "ui/register_screen.h"
 
 typedef enum {
     APP_PAGE_WELCOME = 0,
     APP_PAGE_LOGIN,
+    APP_PAGE_REGISTER,
     APP_PAGE_ADMIN_HOME,
     APP_PAGE_READER_HOME
 } AppPage;
@@ -19,6 +22,8 @@ typedef struct {
     Console console;
     Input input;
     LoginForm login_form;
+    RegisterForm register_form;
+    ReaderRepository readers;
     UserSession session;
     AppPage page;
     int welcome_selection;

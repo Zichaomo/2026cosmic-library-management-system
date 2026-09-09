@@ -902,3 +902,97 @@ LibraryResult library_mark_loan_overdue_for_demo(
     }
     return LIBRARY_RESULT_SUCCESS;
 }
+
+LibraryResult library_add_book(
+    LibraryRepository *repository,
+    const wchar_t *isbn,
+    const wchar_t *title,
+    const wchar_t *author,
+    int copies,
+    int *book_id
+) {
+    if (repository == NULL || isbn == NULL || title == NULL ||
+        author == NULL || isbn[0] == L'\0' || title[0] == L'\0' ||
+        author[0] == L'\0' || copies <= 0 || copies > 999 ||
+        wcslen(isbn) >= BOOK_ISBN_CAPACITY ||
+        wcslen(title) >= BOOK_TITLE_CAPACITY ||
+        wcslen(author) >= BOOK_AUTHOR_CAPACITY) {
+        return LIBRARY_RESULT_INVALID_INPUT;
+    }
+    for (size_t i = 0; i < repository->book_count; ++i) {
+        if (wcscmp(repository->books[i].isbn, isbn) == 0) {
+            return LIBRARY_RESULT_DUPLICATE_ISBN;
+        }
+    }
+    if (!ensure_array_capacity(
+            (void **)&repository->books,
+            &repository->book_capacity,
+            repository->book_count,
+            sizeof(*repository->books)
+        )) {
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
+    Book book;
+    memset(&book, 0, sizeof(book));
+    book.id = next_book_id(repository);
+    book.total_copies = copies;
+    book.available_copies = copies;
+    book.status = BOOK_STATUS_AVAILABLE;
+    wcsncpy(book.isbn, isbn, BOOK_ISBN_CAPACITY - 1);
+    wcsncpy(book.title, title, BOOK_TITLE_CAPACITY - 1);
+    wcsncpy(book.author, author, BOOK_AUTHOR_CAPACITY - 1);
+    if (!format_date(time(NULL), book.created_at)) {
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
+    repository->books[repository->book_count++] = book;
+    if (!save_books(repository)) {
+        --repository->book_count;
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
+    if (book_id != NULL) {
+        *book_id = book.id;
+    }
+    return LIBRARY_RESULT_SUCCESS;
+}
+
+LibraryResult library_add_book_copy(
+    LibraryRepository *repository,
+    int book_id
+) {
+    if (repository == NULL) {
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
+    Book *book = find_book_mutable(repository, book_id);
+    if (book == NULL) {
+        return LIBRARY_RESULT_BOOK_NOT_FOUND;
+    }
+    const Book old_book = *book;
+    ++book->total_copies;
+    ++book->available_copies;
+    if (!save_books(repository)) {
+        *book = old_book;
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
+    return LIBRARY_RESULT_SUCCESS;
+}
+
+LibraryResult library_toggle_book_status(
+    LibraryRepository *repository,
+    int book_id
+) {
+    if (repository == NULL) {
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
+    Book *book = find_book_mutable(repository, book_id);
+    if (book == NULL) {
+        return LIBRARY_RESULT_BOOK_NOT_FOUND;
+    }
+    const BookStatus old_status = book->status;
+    book->status = old_status == BOOK_STATUS_AVAILABLE
+        ? BOOK_STATUS_SUSPENDED : BOOK_STATUS_AVAILABLE;
+    if (!save_books(repository)) {
+        book->status = old_status;
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
+    return LIBRARY_RESULT_SUCCESS;
+}

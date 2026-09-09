@@ -56,6 +56,35 @@ int main(void) {
         "initialize circulation repositories"
     );
     check(library.book_count == 5, "seed five demonstration books");
+    int added_book_id = 0;
+    check(
+        library_add_book(
+            &library, L"9787300000001", L"管理员新增图书",
+            L"测试作者", 2, &added_book_id
+        ) == LIBRARY_RESULT_SUCCESS && library.book_count == 6,
+        "admin adds a new book"
+    );
+    check(
+        library_add_book(
+            &library, L"9787300000001", L"重复 ISBN",
+            L"测试作者", 1, NULL
+        ) == LIBRARY_RESULT_DUPLICATE_ISBN,
+        "reject duplicate ISBN"
+    );
+    check(
+        library_add_book_copy(&library, added_book_id) ==
+            LIBRARY_RESULT_SUCCESS &&
+        library_find_book(&library, added_book_id)->total_copies == 3 &&
+        library_find_book(&library, added_book_id)->available_copies == 3,
+        "admin adds one inventory copy"
+    );
+    check(
+        library_toggle_book_status(&library, added_book_id) ==
+            LIBRARY_RESULT_SUCCESS &&
+        library_find_book(&library, added_book_id)->status ==
+            BOOK_STATUS_SUSPENDED,
+        "admin suspends a book"
+    );
 
     const ReaderRegistrationRequest request = {
         L"loan-test", L"借阅测试读者", L"reader123", L"reader123",
@@ -70,6 +99,22 @@ int main(void) {
     );
     check(reader != NULL, "find registered reader id");
     const int reader_id = reader != NULL ? reader->id : 0;
+    check(
+        library_borrow_book(
+            &library, &readers, reader_id, added_book_id, NULL
+        ) == LIBRARY_RESULT_BOOK_UNAVAILABLE &&
+        library_toggle_book_status(&library, added_book_id) ==
+            LIBRARY_RESULT_SUCCESS,
+        "suspended book cannot be borrowed and can be restored"
+    );
+    check(
+        reader_repository_toggle_frozen(&readers, reader_id) &&
+        library_borrow_book(
+            &library, &readers, reader_id, 1, NULL
+        ) == LIBRARY_RESULT_READER_BLOCKED &&
+        reader_repository_toggle_frozen(&readers, reader_id),
+        "admin freeze blocks borrowing and unfreeze restores access"
+    );
 
     int loan_id = 0;
     check(
@@ -173,7 +218,8 @@ int main(void) {
     library_repository_dispose(&library);
     check(
         library_repository_init(&library, L"tests\\tmp_circulation") &&
-            library.loan_count == 4 && library.fine_count == 2 &&
+            library.book_count == 6 && library.loan_count == 4 &&
+            library.fine_count == 2 &&
             library.fines[0].status == FINE_STATUS_PAID &&
             library.fines[1].status == FINE_STATUS_PAID,
         "reload books loans and fines after restart"

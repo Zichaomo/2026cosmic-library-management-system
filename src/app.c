@@ -4,6 +4,7 @@
 #include <string.h>
 #include <wchar.h>
 
+#include "ui/admin_screen.h"
 #include "ui/circulation_screen.h"
 #include "ui/home_screen.h"
 #include "ui/screen.h"
@@ -135,16 +136,43 @@ static void draw_current_page(const App *app) {
                 app->list_selection, app->status_message
             );
             break;
+        case APP_PAGE_ADMIN_BOOKS:
+            admin_screen_draw_books(
+                &app->console, &app->library,
+                app->list_selection, app->status_message
+            );
+            break;
+        case APP_PAGE_ADMIN_ADD_BOOK:
+            admin_screen_draw_book_form(
+                &app->console, &app->admin_book_form
+            );
+            break;
+        case APP_PAGE_ADMIN_READERS:
+            admin_screen_draw_readers(
+                &app->console, &app->readers, &app->library,
+                app->list_selection, app->status_message
+            );
+            break;
         case APP_PAGE_ADMIN_LOANS:
             circulation_screen_draw_admin_loans(
                 &app->console, &app->readers, &app->library,
                 app->list_selection, app->status_message
             );
             break;
+        case APP_PAGE_ADMIN_BORROW:
+            admin_screen_draw_borrow_form(
+                &app->console, &app->admin_borrow_form
+            );
+            break;
         case APP_PAGE_ADMIN_FINES:
             circulation_screen_draw_admin_fines(
                 &app->console, &app->readers, &app->library,
                 app->list_selection, app->status_message
+            );
+            break;
+        case APP_PAGE_ADMIN_STATS:
+            admin_screen_draw_stats(
+                &app->console, &app->readers, &app->library
             );
             break;
     }
@@ -366,10 +394,14 @@ static void logout_to_welcome(App *app) {
 static void activate_admin_item(App *app) {
     switch ((AdminMenuItem)app->home_selection) {
         case ADMIN_MENU_BOOKS:
-            set_status(app, L"已选择图书管理，下一阶段接入图书数据。");
+            app->list_selection = 0;
+            app->status_message[0] = L'\0';
+            app->page = APP_PAGE_ADMIN_BOOKS;
             break;
         case ADMIN_MENU_READERS:
-            set_status(app, L"已选择读者管理，下一阶段接入读者数据。");
+            app->list_selection = 0;
+            app->status_message[0] = L'\0';
+            app->page = APP_PAGE_ADMIN_READERS;
             break;
         case ADMIN_MENU_LOANS:
             app->list_selection = 0;
@@ -385,7 +417,8 @@ static void activate_admin_item(App *app) {
             app->page = APP_PAGE_ADMIN_FINES;
             break;
         case ADMIN_MENU_STATS:
-            set_status(app, L"已选择统计报表，功能尚未实现。");
+            app->status_message[0] = L'\0';
+            app->page = APP_PAGE_ADMIN_STATS;
             break;
         case ADMIN_MENU_LOGOUT:
             logout_to_welcome(app);
@@ -565,6 +598,12 @@ static void show_library_result(App *app, LibraryResult result) {
         case LIBRARY_RESULT_FINE_PAID:
             set_status(app, L"操作失败：该罚款已经缴纳。");
             break;
+        case LIBRARY_RESULT_INVALID_INPUT:
+            set_status(app, L"操作失败：输入内容无效。");
+            break;
+        case LIBRARY_RESULT_DUPLICATE_ISBN:
+            set_status(app, L"操作失败：ISBN 已存在。");
+            break;
         case LIBRARY_RESULT_STORAGE_ERROR:
             set_status(app, L"操作失败：数据保存失败。");
             break;
@@ -723,6 +762,10 @@ static void handle_circulation_event(App *app, const UiEvent *event) {
                 (event->character == L'r' || event->character == L'R')) {
                 activate_circulation_item(app, true);
             } else if (app->page == APP_PAGE_ADMIN_LOANS &&
+                (event->character == L'b' || event->character == L'B')) {
+                admin_borrow_form_init(&app->admin_borrow_form);
+                app->page = APP_PAGE_ADMIN_BORROW;
+            } else if (app->page == APP_PAGE_ADMIN_LOANS &&
                 (event->character == L'o' || event->character == L'O')) {
                 if (app->list_selection < 0 ||
                     (size_t)app->list_selection >= app->library.loan_count) {
@@ -757,6 +800,223 @@ static void handle_circulation_event(App *app, const UiEvent *event) {
     }
 }
 
+static bool parse_positive_wide(const wchar_t *text, int *value) {
+    if (text == NULL || text[0] == L'\0' || value == NULL) {
+        return false;
+    }
+    wchar_t *end = NULL;
+    const long parsed = wcstol(text, &end, 10);
+    if (end == text || *end != L'\0' || parsed <= 0 || parsed > 2147483647L) {
+        return false;
+    }
+    *value = (int)parsed;
+    return true;
+}
+
+static void submit_admin_book_form(App *app) {
+    int copies = 0;
+    if (!parse_positive_wide(app->admin_book_form.copies, &copies)) {
+        admin_book_form_set_message(
+            &app->admin_book_form, L"副本数必须是大于 0 的整数。", true
+        );
+        return;
+    }
+    int book_id = 0;
+    const LibraryResult result = library_add_book(
+        &app->library,
+        app->admin_book_form.isbn,
+        app->admin_book_form.title,
+        app->admin_book_form.author,
+        copies,
+        &book_id
+    );
+    if (result == LIBRARY_RESULT_SUCCESS) {
+        wchar_t message[192];
+        swprintf(message, 192, L"新增图书成功，图书编号：%d。", book_id);
+        app->list_selection = (int)app->library.book_count - 1;
+        app->page = APP_PAGE_ADMIN_BOOKS;
+        set_status(app, message);
+    } else if (result == LIBRARY_RESULT_DUPLICATE_ISBN) {
+        admin_book_form_set_message(
+            &app->admin_book_form, L"新增失败：ISBN 已经存在。", true
+        );
+    } else if (result == LIBRARY_RESULT_INVALID_INPUT) {
+        admin_book_form_set_message(
+            &app->admin_book_form,
+            L"ISBN、书名、作者不能为空，副本数范围为 1～999。", true
+        );
+    } else {
+        admin_book_form_set_message(
+            &app->admin_book_form, L"新增失败：数据保存失败。", true
+        );
+    }
+}
+
+static void submit_admin_borrow_form(App *app) {
+    int book_id = 0;
+    if (!parse_positive_wide(app->admin_borrow_form.book_id, &book_id)) {
+        admin_borrow_form_set_message(
+            &app->admin_borrow_form, L"图书编号必须是大于 0 的整数。", true
+        );
+        return;
+    }
+    const ReaderAccount *reader = reader_repository_find_by_number(
+        &app->readers, app->admin_borrow_form.reader_no
+    );
+    if (reader == NULL) {
+        admin_borrow_form_set_message(
+            &app->admin_borrow_form, L"办理失败：读者账号不存在。", true
+        );
+        return;
+    }
+    int loan_id = 0;
+    const LibraryResult result = library_borrow_book(
+        &app->library, &app->readers, reader->id, book_id, &loan_id
+    );
+    if (result == LIBRARY_RESULT_SUCCESS) {
+        wchar_t message[192];
+        swprintf(
+            message, 192, L"办理借书成功，借阅单号：%d，借期 30 天。",
+            loan_id
+        );
+        app->list_selection = (int)app->library.loan_count - 1;
+        app->page = APP_PAGE_ADMIN_LOANS;
+        set_status(app, message);
+    } else {
+        const wchar_t *message = L"办理失败：数据保存失败。";
+        if (result == LIBRARY_RESULT_BOOK_NOT_FOUND) {
+            message = L"办理失败：图书编号不存在。";
+        } else if (result == LIBRARY_RESULT_BOOK_UNAVAILABLE) {
+            message = L"办理失败：该书无可借副本或已停借。";
+        } else if (result == LIBRARY_RESULT_READER_BLOCKED) {
+            message = L"办理失败：读者已冻结或欠款达到 10 元。";
+        } else if (result == LIBRARY_RESULT_LOAN_LIMIT) {
+            message = L"办理失败：该读者已达到 5 本借阅上限。";
+        } else if (result == LIBRARY_RESULT_ALREADY_BORROWED) {
+            message = L"办理失败：该读者已经借阅这本书。";
+        }
+        admin_borrow_form_set_message(
+            &app->admin_borrow_form, message, true
+        );
+    }
+}
+
+static void handle_admin_form_event(App *app, const UiEvent *event) {
+    AdminFormAction action = ADMIN_FORM_ACTION_NONE;
+    if (app->page == APP_PAGE_ADMIN_ADD_BOOK) {
+        action = admin_book_form_handle_event(&app->admin_book_form, event);
+        if (action == ADMIN_FORM_ACTION_SUBMIT) {
+            submit_admin_book_form(app);
+        } else if (action == ADMIN_FORM_ACTION_BACK) {
+            app->page = APP_PAGE_ADMIN_BOOKS;
+        }
+    } else {
+        action = admin_borrow_form_handle_event(
+            &app->admin_borrow_form, event
+        );
+        if (action == ADMIN_FORM_ACTION_SUBMIT) {
+            submit_admin_borrow_form(app);
+        } else if (action == ADMIN_FORM_ACTION_BACK) {
+            app->page = APP_PAGE_ADMIN_LOANS;
+        }
+    }
+}
+
+static void move_admin_list_selection(App *app, int direction, int count) {
+    if (count > 0) {
+        app->list_selection =
+            (app->list_selection + direction + count) % count;
+    }
+    app->status_message[0] = L'\0';
+}
+
+static void handle_admin_management_event(App *app, const UiEvent *event) {
+    if (event->type != UI_EVENT_KEY) {
+        return;
+    }
+    if (event->key == UI_KEY_ESCAPE) {
+        app->list_selection = 0;
+        app->status_message[0] = L'\0';
+        app->page = APP_PAGE_ADMIN_HOME;
+        return;
+    }
+    const int item_count = app->page == APP_PAGE_ADMIN_BOOKS
+        ? (int)app->library.book_count
+        : (app->page == APP_PAGE_ADMIN_READERS
+            ? (int)app->readers.count : 0);
+    if (event->key == UI_KEY_TAB || event->key == UI_KEY_DOWN) {
+        move_admin_list_selection(app, 1, item_count);
+        return;
+    }
+    if (event->key == UI_KEY_SHIFT_TAB || event->key == UI_KEY_UP) {
+        move_admin_list_selection(app, -1, item_count);
+        return;
+    }
+    if (event->key == UI_KEY_HOME) {
+        app->list_selection = 0;
+        return;
+    }
+    if (event->key == UI_KEY_END) {
+        app->list_selection = item_count > 0 ? item_count - 1 : 0;
+        return;
+    }
+    if (event->key != UI_KEY_CHARACTER) {
+        return;
+    }
+
+    if (app->page == APP_PAGE_ADMIN_BOOKS &&
+        (event->character == L'n' || event->character == L'N')) {
+        admin_book_form_init(&app->admin_book_form);
+        app->page = APP_PAGE_ADMIN_ADD_BOOK;
+        return;
+    }
+    if (app->page == APP_PAGE_ADMIN_BOOKS && item_count > 0 &&
+        (event->character == L'+' || event->character == L'=')) {
+        const Book *book = &app->library.books[app->list_selection];
+        const LibraryResult result = library_add_book_copy(
+            &app->library, book->id
+        );
+        if (result == LIBRARY_RESULT_SUCCESS) {
+            set_status(app, L"已为选中图书增加 1 本馆藏副本。");
+        } else {
+            show_library_result(app, result);
+        }
+        return;
+    }
+    if (app->page == APP_PAGE_ADMIN_BOOKS && item_count > 0 &&
+        (event->character == L's' || event->character == L'S')) {
+        const Book *book = &app->library.books[app->list_selection];
+        const LibraryResult result = library_toggle_book_status(
+            &app->library, book->id
+        );
+        if (result == LIBRARY_RESULT_SUCCESS) {
+            const Book *updated = &app->library.books[app->list_selection];
+            set_status(
+                app, updated->status == BOOK_STATUS_AVAILABLE
+                    ? L"图书已恢复借阅。" : L"图书已设置为停借。"
+            );
+        } else {
+            show_library_result(app, result);
+        }
+        return;
+    }
+    if (app->page == APP_PAGE_ADMIN_READERS && item_count > 0 &&
+        (event->character == L'f' || event->character == L'F')) {
+        const ReaderAccount *reader = &app->readers.items[app->list_selection];
+        if (reader_repository_toggle_frozen(&app->readers, reader->id)) {
+            const ReaderAccount *updated =
+                &app->readers.items[app->list_selection];
+            set_status(
+                app, updated->status == READER_STATUS_FROZEN
+                    ? L"读者账号已冻结，将无法登录和借书。"
+                    : L"读者账号已解冻。"
+            );
+        } else {
+            set_status(app, L"操作失败：读者状态保存失败或账号已注销。");
+        }
+    }
+}
+
 bool app_init(App *app) {
     if (app == NULL) {
         return false;
@@ -773,6 +1033,8 @@ bool app_init(App *app) {
     app->running = true;
     login_form_init(&app->login_form);
     register_form_init(&app->register_form);
+    admin_book_form_init(&app->admin_book_form);
+    admin_borrow_form_init(&app->admin_borrow_form);
     auth_session_clear(&app->session);
 
     if (!reader_repository_init(&app->readers, L"data")) {
@@ -837,6 +1099,15 @@ int app_run(App *app) {
             case APP_PAGE_ADMIN_LOANS:
             case APP_PAGE_ADMIN_FINES:
                 handle_circulation_event(app, &event);
+                break;
+            case APP_PAGE_ADMIN_BOOKS:
+            case APP_PAGE_ADMIN_READERS:
+            case APP_PAGE_ADMIN_STATS:
+                handle_admin_management_event(app, &event);
+                break;
+            case APP_PAGE_ADMIN_ADD_BOOK:
+            case APP_PAGE_ADMIN_BORROW:
+                handle_admin_form_event(app, &event);
                 break;
         }
 

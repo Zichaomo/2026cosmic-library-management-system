@@ -49,12 +49,19 @@ const ReaderAccount *reader_repository_find_by_number(
     const ReaderRepository *repository,
     const wchar_t *reader_no
 );
+const ReaderAccount *reader_repository_find_by_id(
+    const ReaderRepository *repository,
+    int reader_id
+);
 int reader_repository_next_id(const ReaderRepository *repository);
 bool reader_repository_add(
     ReaderRepository *repository,
     const ReaderAccount *account
 );
 bool reader_repository_save(const ReaderRepository *repository);
+bool reader_repository_toggle_frozen(
+    ReaderRepository *repository,
+    int reader_id
+);
 
 #endif
-

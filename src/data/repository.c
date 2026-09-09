@@ -822,6 +822,25 @@ FINDER(Reservation, s_reservations, reservation)
 FINDER(Fine, s_fines, fine)
 FINDER(Admin, s_admins, admin)
 
+/* ---- 硬删除（字典表：按 ID 移除元素并保存） ---- */
+#define REMOVER(name, svar, fname)                                      \
+    Result repo_remove_##fname(EntityId id) {                           \
+        name *arr = (name *)svar.data;                                  \
+        size_t i;                                                       \
+        for (i = 0; i < svar.len; i++)                                  \
+            if (arr[i].id == id) {                                      \
+                memmove(&arr[i], &arr[i + 1],                           \
+                        (svar.len - i - 1) * sizeof(name));             \
+                svar.len--;                                             \
+                return repo_save_all();                                 \
+            }                                                           \
+        return RES_ERR_NOT_FOUND;                                       \
+    }
+
+REMOVER(Author, s_authors, author)
+REMOVER(Publisher, s_publishers, publisher)
+REMOVER(Category, s_categories, category)
+
 /* ---- 按业务键查找 ---- */
 Reader *repo_find_reader_by_no(const char *reader_no) {
     const Reader *arr = (const Reader *)s_readers.data;

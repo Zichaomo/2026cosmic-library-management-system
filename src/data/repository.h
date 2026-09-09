@@ -53,6 +53,11 @@ Admin *repo_find_admin(EntityId id);
 Reader *repo_find_reader_by_no(const char *reader_no);
 Admin *repo_find_admin_by_username(const char *username);
 
+/* ---- 硬删除（字典表：作者/出版社/分类；无引用时才调用） ---- */
+Result repo_remove_author(EntityId id);
+Result repo_remove_publisher(EntityId id);
+Result repo_remove_category(EntityId id);
+
 /* ---- 配置（meta.csv：loan_days / fine_per_day / borrow_limit /
        freeze_threshold / hold_days / next_* 计数） ---- */
 int repo_config_int(const char *key, int def);

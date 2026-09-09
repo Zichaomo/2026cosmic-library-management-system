@@ -20,6 +20,8 @@ typedef enum {
     SCREEN_STATS,            /* 统计报表 */
     SCREEN_READER_CENTER,    /* 读者个人中心 */
     SCREEN_HELP,             /* 帮助 */
+    SCREEN_DICT_MANAGE,      /* 字典管理（作者/出版社/分类） */
+    SCREEN_CHANGE_PWD,       /* 修改密码 */
     SCREEN_COUNT
 } ScreenId;
 

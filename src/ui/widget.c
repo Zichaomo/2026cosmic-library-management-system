@@ -204,3 +204,11 @@ void widget_get_rect(const Widget *wd, int *x, int *y, int *ww, int *hh) {
     if (ww) *ww = wd->w;
     if (hh) *hh = wd->h;
 }
+
+void widget_set_rect(Widget *wd, int x, int y, int ww, int hh) {
+    if (!wd) return;
+    wd->x = x;
+    wd->y = y;
+    wd->w = ww;
+    wd->h = hh;
+}

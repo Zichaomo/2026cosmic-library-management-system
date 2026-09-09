@@ -14,6 +14,9 @@ typedef struct {
     unsigned short content_bg, content_fg; /* 内容区 */
     unsigned short status_bg, status_fg;   /* 状态栏 */
     unsigned short warn_fg, error_fg, ok_fg; /* 提示色 */
+    unsigned short border_fg;       /* 面板边框 */
+    unsigned short accent_fg;       /* 强调（页签/选中标签） */
+    unsigned short hint_fg;         /* 次要说明文字 */
 } Theme;
 
 /* 当前主题 */

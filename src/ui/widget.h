@@ -49,4 +49,7 @@ void widget_list_scroll(Widget *w, int delta);
 /* 获取控件位置与尺寸（用于命中检测/布局） */
 void widget_get_rect(const Widget *wd, int *x, int *y, int *w, int *h);
 
+/* 重新设置控件位置与尺寸（用于自适应窗口布局） */
+void widget_set_rect(Widget *wd, int x, int y, int w, int h);
+
 #endif /* LMS_UI_WIDGET_H */

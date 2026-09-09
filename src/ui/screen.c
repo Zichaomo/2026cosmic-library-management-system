@@ -90,7 +90,7 @@ static EntityId s_pending_del = 0; /* 待二次确认删除的 id */
 static int s_pending_kind = 0;     /* 0图书 1作者 2出版社 3分类 */
 
 /* ---------- 静态控件 ---------- */
-static Widget *g_welcome_btns[4];
+static Widget *g_welcome_list;
 static Widget *g_login_btns[2];
 static Widget *g_reg_btns[2];
 static Widget *g_admin_list;
@@ -107,6 +107,10 @@ static Widget *g_da_new, *g_da_edit, *g_da_del, *g_da_back;
 static Widget *g_df_save, *g_df_cancel;
 /* M2: 修改密码 */
 static Widget *g_pwd_ok, *g_pwd_cancel;
+
+static const char *WELCOME_ITEMS[] = {
+    "   登  录", "   注  册", "   帮  助", "   退  出"
+};
 
 static const char *ADMIN_ITEMS[] = {
     "1. 图书管理", "2. 字典管理", "3. 读者管理",
@@ -218,12 +222,9 @@ static bool hover_changed(const InputEvent *ev, Widget **btns, int n) {
 
 /* ---------- 控件构建（一次性） ---------- */
 static void ui_build_static(void) {
-    if (g_welcome_btns[0]) return;
-    g_welcome_btns[0] = widget_button(41, 10, 18, "1. 登录");
-    g_welcome_btns[1] = widget_button(41, 12, 18, "2. 注册");
-    g_welcome_btns[2] = widget_button(41, 14, 18, "3. 帮助");
-    g_welcome_btns[3] = widget_button(41, 16, 18, "4. 退出");
-    g_login_btns[0] = widget_button(36, 9, 12, "登录");
+    if (g_login_btns[0]) return;
+    g_welcome_list = widget_list(0, 0, 26, 4);
+    g_login_btns[0] = widget_button(0, 0, 14, "登 录");
     g_login_btns[1] = widget_button(52, 9, 12, "返回");
     g_reg_btns[0] = widget_button(36, 13, 12, "注册");
     g_reg_btns[1] = widget_button(52, 13, 12, "返回");
@@ -260,6 +261,10 @@ static void ui_build_static(void) {
 /* ---------- 页面进入回调 ---------- */
 static void on_enter(ScreenId id) {
     switch (id) {
+    case SCREEN_WELCOME:
+        widget_list_set_items(g_welcome_list, WELCOME_ITEMS, 4);
+        widget_list_set_sel(g_welcome_list, 0);
+        break;
     case SCREEN_LOGIN:
         memset(&s_login, 0, sizeof s_login);
         break;
@@ -318,145 +323,425 @@ void screen_message(const char *text) {
     str_copy(s_msg, sizeof s_msg, text);
 }
 
+/* =====================================================================
+ * 布局与绘制工具
+ * ===================================================================== */
+
+/* 颜色快捷宏（属性 = 背景<<4 | 前景） */
+#define COL_BODY   ((unsigned short)(g_theme.bg | g_theme.fg))
+#define COL_BORDER ((unsigned short)(g_theme.bg | g_theme.border_fg))
+#define COL_TITLE  ((unsigned short)(g_theme.bg | g_theme.title_fg))
+#define COL_ACCENT ((unsigned short)(g_theme.bg | g_theme.accent_fg))
+#define COL_HINT   ((unsigned short)(g_theme.bg | g_theme.hint_fg))
+#define COL_OK     ((unsigned short)(g_theme.bg | g_theme.ok_fg))
+#define COL_WARN   ((unsigned short)(g_theme.bg | g_theme.warn_fg))
+#define COL_ERR    ((unsigned short)(g_theme.bg | g_theme.error_fg))
+
+/* 当前帧布局（draw 时计算，handle 复用，保证命中检测与显示一致） */
+static int L_px, L_py, L_pw, L_ph; /* 主面板 */
+static int L_fx, L_fy, L_fw;       /* 表单：值区 x / 首行 y / 宽 */
+static int L_msg_y;                /* 消息行 */
+static int L_sx;                   /* 检索条起始 x */
+
+/* CJK 等宽字符判定 */
+static bool ui_is_wide(unsigned int cp) {
+    return (cp >= 0x1100 && cp <= 0x115F) ||
+           (cp >= 0x2E80 && cp <= 0xA4CF) ||
+           (cp >= 0xAC00 && cp <= 0xD7A3) ||
+           (cp >= 0xF900 && cp <= 0xFAFF) ||
+           (cp >= 0xFE30 && cp <= 0xFE6F) ||
+           (cp >= 0xFF00 && cp <= 0xFF60) ||
+           (cp >= 0xFFE0 && cp <= 0xFFE6);
+}
+
+/* UTF-8 字符串的显示宽度（列数） */
+static int ui_width(const char *s) {
+    int w = 0;
+    const unsigned char *p = (const unsigned char *)s;
+    if (!s) return 0;
+    while (*p) {
+        if (p[0] < 0x80) { w += 1; p += 1; }
+        else if ((p[0] & 0xE0) == 0xC0) { w += 1; p += 2; }
+        else if ((p[0] & 0xF0) == 0xE0) {
+            unsigned int cp = ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+            w += ui_is_wide(cp) ? 2 : 1;
+            p += 3;
+        } else { w += 1; p += 4; }
+    }
+    return w;
+}
+
+/* 按显示宽度截断并补空格到 width 列（用于表格列对齐） */
+static void ui_pad(char *dst, size_t cap, const char *src, int width) {
+    size_t n = 0;
+    int w = 0;
+    const unsigned char *p = (const unsigned char *)src;
+    if (!dst || cap == 0) return;
+    if (!src) src = "";
+    while (*p && w < width) {
+        size_t len = 1;
+        int cw = 1;
+        if (p[0] < 0x80) { len = 1; cw = 1; }
+        else if ((p[0] & 0xE0) == 0xC0) { len = 2; cw = 1; }
+        else if ((p[0] & 0xF0) == 0xE0) {
+            unsigned int cp = ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+            len = 3;
+            cw = ui_is_wide(cp) ? 2 : 1;
+        } else { len = 4; cw = 1; }
+        if (w + cw > width) break;
+        if (n + len + 1 >= cap) break;
+        memcpy(dst + n, p, len);
+        n += len;
+        w += cw;
+        p += len;
+    }
+    while (w < width && n + 1 < cap) {
+        dst[n++] = ' ';
+        w++;
+    }
+    dst[n] = '\0';
+}
+
+/* 追加一列（按显示宽度对齐）到 out */
+static void ui_append(char *out, size_t cap, const char *text, int width) {
+    char tmp[160];
+    size_t used = strlen(out);
+    size_t n;
+    ui_pad(tmp, sizeof tmp, text, width);
+    n = strlen(tmp);
+    if (used + n + 1 >= cap) return;
+    memcpy(out + used, tmp, n + 1);
+}
+
+/* 居中输出一行 */
+static void ui_center(int y, const char *text) {
+    int x = (s_cols - ui_width(text)) / 2;
+    if (x < 0) x = 0;
+    console_write_at(x, y, text);
+}
+
+/* 用空格填满一行并设置底色 */
+static void ui_fill_row(int y, unsigned short attr) {
+    char line[256];
+    int n = s_cols > 250 ? 250 : s_cols;
+    if (n < 1) return;
+    memset(line, ' ', (size_t)n);
+    line[n] = '\0';
+    console_set_color(attr);
+    console_write_at(0, y, line);
+}
+
+/* 带标题的面板 */
+static void ui_panel(int x, int y, int w, int h, const char *title) {
+    char buf[128];
+    if (w < 4 || h < 3) return;
+    console_set_color(COL_BORDER);
+    console_draw_box(x, y, w, h);
+    if (title && *title) {
+        snprintf(buf, sizeof buf, " %s ", title);
+        console_set_color(COL_TITLE);
+        console_write_at(x + (w - ui_width(buf)) / 2, y, buf);
+    }
+    console_set_color(COL_BODY);
+}
+
+/* 面板内水平分隔线 */
+static void ui_sep(int x, int y, int w) {
+    char line[256 * 3 + 1];
+    int i, n = w > 250 ? 250 : w;
+    if (n < 1) return;
+    line[0] = '\0';
+    for (i = 0; i < n; i++) strcat(line, "─");
+    console_set_color(COL_BORDER);
+    console_write_at(x, y, line);
+    console_set_color(COL_BODY);
+}
+
+/* 底部提示行（状态栏上方） */
+static void draw_hint_bar(const char *text) {
+    if (!text) return;
+    console_set_color(COL_HINT);
+    ui_center(s_rows - 2, text);
+    console_set_color(COL_BODY);
+}
+
 /* ---------- 公共绘制 ---------- */
 static void draw_title_bar(void) {
-    char buf[256];
+    char right[64];
     const char *pg = (s_current >= 0 && s_current < SCREEN_COUNT) ? SCREEN_NAMES[s_current] : "?";
-    int w = s_cols > 250 ? 250 : s_cols;
-    int len;
-    console_set_color((unsigned short)(g_theme.title_bg | g_theme.title_fg));
-    snprintf(buf, sizeof buf, "  宇宙图书馆管理系统 v0.1   [%s]", pg);
-    len = (int)strlen(buf);
-    if (len > w) len = w;
-    if (w > len) memset(buf + len, ' ', (size_t)(w - len));
-    buf[w] = '\0';
-    console_write_at(0, 0, buf);
-    console_set_color((unsigned short)(g_theme.bg | g_theme.fg));
+    unsigned short attr = (unsigned short)(g_theme.title_bg | g_theme.title_fg);
+    ui_fill_row(0, attr);
+    console_set_color(attr);
+    console_write_at(2, 0, "宇宙图书馆管理系统");
+    console_set_color(COL_HINT);
+    console_write_at(22, 0, "v0.1");
+    console_set_color(attr);
+    snprintf(right, sizeof right, "[ %s ]", pg);
+    console_write_at(s_cols - ui_width(right) - 2, 0, right);
+    console_set_color(COL_BODY);
 }
 
 static void draw_status_bar(void) {
-    char buf[256];
-    char now[24];
+    char left[128], now[24];
     const char *role = "访客", *user = "未登录";
-    int w = s_cols > 250 ? 250 : s_cols;
-    int len;
+    const char *hints = "F1 帮助   F5 刷新   Esc 返回   Ctrl+Q 退出";
+    unsigned short attr = (unsigned short)(g_theme.status_bg | g_theme.status_fg);
     if (g_session.logged_in) {
         user = g_session.display_name[0] ? g_session.display_name : g_session.username;
         role = g_session.role == ROLE_ADMIN ? "管理员" : "读者";
     }
     date_now_str(now, sizeof now);
-    console_set_color((unsigned short)(g_theme.status_bg | g_theme.status_fg));
-    snprintf(buf, sizeof buf,
-             "  当前用户: %s | 角色: %s | %s | F1帮助 F5刷新 Esc返回 Ctrl+Q退出",
-             user, role, now);
-    len = (int)strlen(buf);
-    if (len > w) len = w;
-    if (w > len) memset(buf + len, ' ', (size_t)(w - len));
-    buf[w] = '\0';
-    console_write_at(0, s_rows - 1, buf);
-    console_set_color((unsigned short)(g_theme.bg | g_theme.fg));
+    ui_fill_row(s_rows - 1, attr);
+    console_set_color(attr);
+    snprintf(left, sizeof left, " %s · %s · %s", user, role, now);
+    console_write_at(1, s_rows - 1, left);
+    console_write_at(s_cols - ui_width(hints) - 2, s_rows - 1, hints);
+    console_set_color(COL_BODY);
 }
 
 static void draw_msg(int x, int y) {
     if (!s_msg[0]) return;
-    console_set_color((unsigned short)(g_theme.bg | g_theme.warn_fg));
+    console_set_color(COL_WARN);
     console_write_at(x, y, s_msg);
-    console_set_color((unsigned short)(g_theme.bg | g_theme.fg));
+    console_set_color(COL_BODY);
 }
 
 /* ---------- 各页面绘制 ---------- */
 static void draw_welcome(void) {
-    int cx = s_cols / 2;
-    int i;
-    console_write_at(cx - 16, 4, "┌──────────────────────────────┐");
-    console_write_at(cx - 16, 5, "│   宇宙图书馆管理系统 v0.1    │");
-    console_write_at(cx - 16, 6, "└──────────────────────────────┘");
-    console_write_at(cx - 15, 8, "欢迎使用，请选择操作：");
-    for (i = 0; i < 4; i++) widget_draw(g_welcome_btns[i]);
-    if (s_cols < 100 || s_rows < 30)
-        console_write_at(cx - 15, 18, "窗口过小，建议调整到至少 100×30（F5 刷新）");
-    draw_msg(cx - 15, 19);
+    int pw = 56, ph = 5, px, py = 2;
+    int lw = 26, lx, ly;
+    if (pw > s_cols - 8) pw = s_cols - 8;
+    px = (s_cols - pw) / 2;
+
+    ui_panel(px, py, pw, ph, NULL);
+    console_set_color(COL_TITLE);
+    ui_center(py + 1, "宇宙图书馆管理系统");
+    console_set_color(COL_HINT);
+    ui_center(py + 2, "Library Management System");
+    console_set_color(COL_BODY);
+
+    console_set_color(COL_HINT);
+    ui_center(py + ph + 1, "请选择操作（↑↓ 选择 · Enter 确认 · 鼠标可点击）");
+    console_set_color(COL_BODY);
+
+    lx = (s_cols - lw) / 2;
+    ly = py + ph + 3;
+    widget_set_rect(g_welcome_list, lx, ly, lw, 4);
+    widget_draw(g_welcome_list);
+
+    if (s_cols < 100 || s_rows < 30) {
+        console_set_color(COL_WARN);
+        ui_center(s_rows - 4, "窗口偏小，建议调整到至少 100×30（F5 刷新）");
+        console_set_color(COL_BODY);
+    }
+    draw_msg(lx, ly + 6);
 }
 
 static void draw_login(void) {
-    char buf[128];
-    int i;
-    console_draw_box(30, 3, 40, 10);
-    console_write_at(46, 4, "用户登录");
-    console_write_at(33, 6, s_login.focus == 0 ? "▶ 账号:" : "  账号:");
-    snprintf(buf, sizeof buf, "%-30s", s_login.account);
-    console_write_at(39, 6, buf);
-    console_write_at(33, 7, s_login.focus == 1 ? "▶ 密码:" : "  密码:");
-    for (i = 0; i < (int)strlen(s_login.password) && i < 30; i++) buf[i] = '*';
-    for (; i < 30; i++) buf[i] = ' ';
-    buf[30] = '\0';
-    console_write_at(39, 7, buf);
-    for (i = 0; i < 2; i++) widget_draw(g_login_btns[i]);
-    draw_msg(32, 11);
+    char buf[96];
+    int pw = 46, ph = 11, px, py = 4, i;
+    if (pw > s_cols - 8) pw = s_cols - 8;
+    px = (s_cols - pw) / 2;
+
+    L_px = px;
+    L_py = py;
+    L_pw = pw;
+    L_ph = ph;
+    L_fx = px + 12;
+    L_fw = pw - 16;
+    L_fy = py + 3;
+    L_msg_y = py + ph - 2;
+
+    ui_panel(px, py, pw, ph, "用户登录");
+    console_set_color(COL_HINT);
+    console_write_at(px + 3, py + 1, "请输入账号与密码（Tab 切换 · Enter 提交）");
+    console_set_color(COL_BODY);
+
+    /* 账号 */
+    console_set_color(s_login.focus == 0 ? COL_ACCENT : COL_BODY);
+    console_write_at(px + 4, L_fy, "账号");
+    console_set_color(COL_BODY);
+    ui_pad(buf, sizeof buf, s_login.account, L_fw);
+    console_set_color(s_login.focus == 0 ? COL_BODY : COL_HINT);
+    console_write_at(L_fx, L_fy, buf);
+
+    /* 密码（掩码） */
+    console_set_color(s_login.focus == 1 ? COL_ACCENT : COL_BODY);
+    console_write_at(px + 4, L_fy + 1, "密码");
+    console_set_color(COL_BODY);
+    for (i = 0; i < (int)strlen(s_login.password) && i < L_fw - 1; i++) buf[i] = '*';
+    for (; i < L_fw; i++) buf[i] = ' ';
+    buf[L_fw] = '\0';
+    console_set_color(s_login.focus == 1 ? COL_BODY : COL_HINT);
+    console_write_at(L_fx, L_fy + 1, buf);
+    console_set_color(COL_BODY);
+
+    ui_sep(px + 1, py + 6, pw - 2);
+    widget_set_rect(g_login_btns[0], px + 7, py + 7, 14, 1);
+    widget_set_rect(g_login_btns[1], px + pw - 21, py + 7, 14, 1);
+    widget_draw(g_login_btns[0]);
+    widget_draw(g_login_btns[1]);
+    draw_msg(px + 3, L_msg_y);
 }
 
 static void draw_register(void) {
     static const char *labels[] = {"姓名", "学号/工号", "密码", "确认密码", "手机号", "邮箱"};
     char buf[128];
-    int i;
-    console_draw_box(25, 3, 50, 14);
-    console_write_at(48, 4, "注册读者");
+    int pw = 54, ph = 15, px, py = 3, i, j;
+    if (pw > s_cols - 8) pw = s_cols - 8;
+    px = (s_cols - pw) / 2;
+
+    L_px = px;
+    L_py = py;
+    L_pw = pw;
+    L_ph = ph;
+    L_fx = px + 14;
+    L_fw = pw - 18;
+    L_fy = py + 3;
+    L_msg_y = py + ph - 2;
+
+    ui_panel(px, py, pw, ph, "注册读者");
+    console_set_color(COL_HINT);
+    console_write_at(px + 3, py + 1, "Tab 切换字段 · Enter 提交 · Esc 返回");
+    console_set_color(COL_BODY);
+
     for (i = 0; i < 6; i++) {
         const char *val = reg_field(i);
         bool masked = (i == 2 || i == 3);
+        int row = L_fy + i;
         size_t n = strlen(val);
-        int row = 6 + i;
-        int j;
-        console_write_at(28, row, i == s_reg.focus ? "▶" : " ");
-        snprintf(buf, sizeof buf, "%s:", labels[i]);
-        console_write_at(30, row, buf);
-        for (j = 0; j < 31; j++) {
+        console_set_color(i == s_reg.focus ? COL_ACCENT : COL_BODY);
+        console_write_at(px + 4, row, labels[i]);
+        console_set_color(COL_BODY);
+        for (j = 0; j < L_fw; j++) {
             if (j < (int)n) buf[j] = masked ? '*' : val[j];
             else buf[j] = ' ';
         }
-        buf[31] = '\0';
-        console_write_at(42, row, buf);
+        buf[L_fw] = '\0';
+        console_write_at(L_fx, row, buf);
     }
-    for (i = 0; i < 2; i++) widget_draw(g_reg_btns[i]);
-    draw_msg(26, 15);
+
+    ui_sep(px + 1, py + 10, pw - 2);
+    widget_set_rect(g_reg_btns[0], px + 9, py + 11, 14, 1);
+    widget_set_rect(g_reg_btns[1], px + pw - 23, py + 11, 14, 1);
+    widget_draw(g_reg_btns[0]);
+    widget_draw(g_reg_btns[1]);
+    draw_msg(px + 3, L_msg_y);
 }
 
 static void draw_admin_menu(void) {
-    console_write_at(5, 2, "管理员主菜单");
+    int pw = 34, ph = 13, px, py = 3, sw = 36;
+    char line[80];
+    size_t nb = 0, nr = 0, i;
+    const Book *books;
+    int total = 0, avail = 0, susp = 0;
+
+    if (pw + sw + 4 > s_cols) sw = s_cols - pw - 6;
+    if (sw < 20) sw = 20;
+    px = (s_cols - (pw + 2 + sw)) / 2;
+    if (px < 1) px = 1;
+
+    L_px = px;
+    L_py = py;
+    L_pw = pw;
+    L_ph = ph;
+
+    ui_panel(px, py, pw, ph, "管理员主菜单");
+    widget_set_rect(g_admin_list, px + 2, py + 2, pw - 4, ph - 3);
     widget_draw(g_admin_list);
-    console_write_at(5, 17, "提示: ↑↓选择 + Enter 确认；鼠标点击/滚轮可用");
-    draw_msg(5, 19);
+
+    /* 右侧：馆藏概览 */
+    books = repo_books(&nb);
+    repo_readers(&nr);
+    for (i = 0; i < nb; i++) {
+        if (books[i].status == BOOK_STATUS_DELETED) continue;
+        total++;
+        if (books[i].status == BOOK_STATUS_SUSPENDED) susp++;
+        else avail += books[i].available_copies;
+    }
+    ui_panel(px + pw + 2, py, sw, ph, "馆藏概览");
+    console_set_color(COL_HINT);
+    console_write_at(px + pw + 4, py + 2, "实时统计");
+    console_set_color(COL_BODY);
+    snprintf(line, sizeof line, "图书总数     %d", total);
+    console_write_at(px + pw + 4, py + 4, line);
+    snprintf(line, sizeof line, "在架可借     %d", avail);
+    console_write_at(px + pw + 4, py + 5, line);
+    snprintf(line, sizeof line, "停借图书     %d", susp);
+    console_write_at(px + pw + 4, py + 6, line);
+    snprintf(line, sizeof line, "读者人数     %zu", nr);
+    console_write_at(px + pw + 4, py + 7, line);
+    console_set_color(COL_HINT);
+    console_write_at(px + pw + 4, py + ph - 2, "数据实时来自 CSV");
+    console_set_color(COL_BODY);
+
+    draw_hint_bar("↑↓ 选择 · Enter 确认 · 鼠标点击/滚轮可用");
+    draw_msg(px, py + ph + 1);
 }
 
 static void draw_reader_center(void) {
-    console_write_at(5, 2, "读者个人中心");
+    int pw = 34, ph = 11, px, py = 3, sw = 34;
+    if (pw + sw + 4 > s_cols) sw = s_cols - pw - 6;
+    if (sw < 20) sw = 20;
+    px = (s_cols - (pw + 2 + sw)) / 2;
+    if (px < 1) px = 1;
+
+    L_px = px;
+    L_py = py;
+    L_pw = pw;
+    L_ph = ph;
+
+    ui_panel(px, py, pw, ph, "读者个人中心");
+    widget_set_rect(g_reader_list, px + 2, py + 2, pw - 4, ph - 3);
     widget_draw(g_reader_list);
-    console_write_at(5, 13, "提示: ↑↓选择 + Enter 确认；鼠标点击/滚轮可用");
-    draw_msg(5, 15);
+
+    ui_panel(px + pw + 2, py, sw, ph, "我的信息");
+    console_set_color(COL_HINT);
+    console_write_at(px + pw + 4, py + 2, "当前登录读者");
+    console_set_color(COL_BODY);
+    console_write_at(px + pw + 4, py + 4, g_session.display_name);
+    console_set_color(COL_HINT);
+    console_write_at(px + pw + 4, py + 5, g_session.username);
+    console_write_at(px + pw + 4, py + ph - 3, "借阅 / 预约 / 罚款");
+    console_write_at(px + pw + 4, py + ph - 2, "将在 M3 里程碑开放");
+    console_set_color(COL_BODY);
+
+    draw_hint_bar("↑↓ 选择 · Enter 确认 · 鼠标点击/滚轮可用");
+    draw_msg(px, py + ph + 1);
 }
 
 static void draw_help(void) {
     static const char *lines[] = {
-        "操作方式",
-        "  鼠标: 单击菜单/按钮/列表行；滚轮滚动列表；双击进详情",
-        "  键盘: ↑↓/PageUp/PageDown/Home/End 选择，Enter 确认",
-        "        Tab 切换表单字段，Backspace 删除，Esc 返回",
+        "鼠标操作",
+        "  单击 菜单 / 按钮 / 列表行          滚轮 滚动列表",
+        "键盘操作",
+        "  ↑↓ PageUp/PageDown Home/End 选择        Enter 确认",
+        "  Tab 切换表单字段     Backspace 删除     Esc 返回",
         "全局快捷键",
-        "  F1 帮助   F5 刷新   Esc 返回上级   Ctrl+Q 退出",
-        "当前进度",
-        "  M1: 登录/注册可用；M2: 图书/字典管理可用；借阅等在 M3",
+        "  F1 帮助        F5 刷新        Esc 返回上级        Ctrl+Q 退出",
+        "功能进度",
+        "  M1 登录/注册  ·  M2 图书与字典管理  ·  M3 借阅/预约/罚款  ·  M4 报表",
     };
-    int i;
-    console_write_at(5, 2, "帮助");
-    for (i = 0; i < 8; i++) console_write_at(6, 4 + i, lines[i]);
+    int pw = 76, ph = 14, px, py = 3, i;
+    if (pw > s_cols - 6) pw = s_cols - 6;
+    px = (s_cols - pw) / 2;
+
+    ui_panel(px, py, pw, ph, "帮助");
+    for (i = 0; i < 9; i++) {
+        bool header = (lines[i][0] != ' ');
+        console_set_color(header ? COL_TITLE : COL_BODY);
+        console_write_at(px + 3, py + 2 + i, lines[i]);
+    }
+    console_set_color(COL_BODY);
+    widget_set_rect(g_help_btn, (s_cols - 14) / 2, py + ph + 1, 14, 1);
     widget_draw(g_help_btn);
 }
 
 void screen_draw(void) {
     ui_build_static();
     console_get_size(&s_cols, &s_rows);
-    if (s_cols < 20) s_cols = 20;
-    if (s_rows < 10) s_rows = 10;
+    if (s_cols < 40) s_cols = 40;
+    if (s_rows < 16) s_rows = 16;
     console_clear();
     draw_title_bar();
     switch (s_current) {
@@ -609,29 +894,6 @@ static bool handle_menu(const InputEvent *ev, Widget *list, int count, MenuActio
 }
 
 /* ---------- 各页面事件处理 ---------- */
-static bool handle_welcome(const InputEvent *ev) {
-    if (ev->type == EV_KEY && ev->key_down) {
-        if (ev->ch >= '1' && ev->ch <= '4') {
-            welcome_action(ev->ch - '1');
-            return true;
-        }
-        return false;
-    }
-    if (ev->type == EV_MOUSE) {
-        int i;
-        bool changed = hover_changed(ev, g_welcome_btns, 4);
-        if (left_press_edge(ev)) {
-            for (i = 0; i < 4; i++) {
-                if (widget_hit(g_welcome_btns[i], ev->x, ev->y)) {
-                    welcome_action(i);
-                    return true;
-                }
-            }
-        }
-        return changed;
-    }
-    return false;
-}
 
 static bool handle_login(const InputEvent *ev) {
     if (ev->type == EV_KEY && ev->key_down) {
@@ -650,8 +912,11 @@ static bool handle_login(const InputEvent *ev) {
     if (ev->type == EV_MOUSE) {
         bool changed = hover_changed(ev, g_login_btns, 2);
         if (left_press_edge(ev)) {
-            if (ev->y == 6 && ev->x >= 33 && ev->x <= 69) { s_login.focus = 0; return true; }
-            if (ev->y == 7 && ev->x >= 33 && ev->x <= 69) { s_login.focus = 1; return true; }
+            if (ev->y >= L_fy && ev->y < L_fy + 2 &&
+                ev->x >= L_fx - 2 && ev->x < L_fx + L_fw) {
+                s_login.focus = ev->y - L_fy;
+                return true;
+            }
             if (widget_hit(g_login_btns[0], ev->x, ev->y)) { do_login(); return true; }
             if (widget_hit(g_login_btns[1], ev->x, ev->y)) { screen_back(); return true; }
         }
@@ -675,14 +940,12 @@ static bool handle_register(const InputEvent *ev) {
         return false;
     }
     if (ev->type == EV_MOUSE) {
-        int i;
         bool changed = hover_changed(ev, g_reg_btns, 2);
         if (left_press_edge(ev)) {
-            for (i = 0; i < 6; i++) {
-                if (ev->y == 6 + i && ev->x >= 28 && ev->x <= 73) {
-                    s_reg.focus = i;
-                    return true;
-                }
+            if (ev->y >= L_fy && ev->y < L_fy + 6 &&
+                ev->x >= L_fx - 2 && ev->x < L_fx + L_fw) {
+                s_reg.focus = ev->y - L_fy;
+                return true;
             }
             if (widget_hit(g_reg_btns[0], ev->x, ev->y)) { do_register(); return true; }
             if (widget_hit(g_reg_btns[1], ev->x, ev->y)) { screen_back(); return true; }
@@ -736,7 +999,7 @@ bool screen_handle(const InputEvent *ev) {
     }
 
     switch (s_current) {
-    case SCREEN_WELCOME: return handle_welcome(ev);
+    case SCREEN_WELCOME: return handle_menu(ev, g_welcome_list, 4, welcome_action);
     case SCREEN_LOGIN: return handle_login(ev);
     case SCREEN_REGISTER: return handle_register(ev);
     case SCREEN_ADMIN_MENU: return handle_menu(ev, g_admin_list, 9, admin_action);
@@ -835,7 +1098,8 @@ static void bs_rebuild_rows(void) {
     }
     for (i = 0; i < s_bs_count; i++) {
         const Book *b = s_bs_res[i];
-        char *r = malloc(96);
+        char *r = malloc(128);
+        char idbuf[16], copies[24];
         const char *st = ui_book_status(b->status);
         int av = b->status == BOOK_STATUS_SUSPENDED ? 0 : b->available_copies;
         size_t j;
@@ -845,9 +1109,15 @@ static void bs_rebuild_rows(void) {
             widget_list_set_items(g_book_list, NULL, 0);
             return;
         }
-        snprintf(r, 96, "%3d %-18.18s %-20.20s 可借%d/%-3d %-6.6s %s",
-                 b->id, b->isbn, b->title, av, b->total_copies,
-                 b->location, st);
+        snprintf(idbuf, sizeof idbuf, "%d", b->id);
+        snprintf(copies, sizeof copies, "%d/%d", av, b->total_copies);
+        r[0] = '\0';
+        ui_append(r, 128, idbuf, 4);
+        ui_append(r, 128, b->isbn, 18);
+        ui_append(r, 128, b->title, 26);
+        ui_append(r, 128, copies, 9);
+        ui_append(r, 128, b->location, 10);
+        ui_append(r, 128, st, 6);
         rows[i] = r;
     }
     widget_list_set_items(g_book_list, (const char *const *)rows, s_bs_count);
@@ -858,40 +1128,85 @@ static void bs_rebuild_rows(void) {
 
 static void draw_book_list(void) {
     static const char *fname[] = {"ISBN", "书名", "作者", "分类"};
-    char buf[96];
-    int i;
+    char buf[128], hdr[160], title[64];
+    int i, bar_w = 74, sx, panel_y = 3, panel_h, row0, by;
     bool admin = g_session.role == ROLE_ADMIN;
 
     bs_rebuild_rows();
 
-    console_write_at(2, 2, "检索:");
+    if (bar_w > s_cols - 4) bar_w = s_cols - 4;
+    sx = (s_cols - bar_w) / 2;
+    if (sx < 1) sx = 1;
+    L_sx = sx;
+
+    /* ---- 检索条 ---- */
+    console_set_color(COL_HINT);
+    console_write_at(sx, 1, "检索字段");
+    console_set_color(COL_BODY);
     for (i = 0; i < 4; i++) {
-        int x = 7 + i * 9;
         snprintf(buf, sizeof buf, "[%d %s]", i + 1, fname[i]);
-        if (s_bs_field == i) console_set_color(ui_invert((unsigned short)(g_theme.bg | g_theme.fg)));
-        console_write_at(x, 2, buf);
-        console_set_color((unsigned short)(g_theme.bg | g_theme.fg));
+        console_set_color(s_bs_field == i ? COL_ACCENT : COL_BODY);
+        console_write_at(sx + 10 + i * 9, 1, buf);
     }
-    console_write_at(43, 2, "关键字:");
-    snprintf(buf, sizeof buf, "[%-18s]", s_bs_keyword);
-    if (s_bs_typing) console_set_color(ui_invert((unsigned short)(g_theme.bg | g_theme.fg)));
-    console_write_at(52, 2, buf);
-    console_set_color((unsigned short)(g_theme.bg | g_theme.fg));
+    console_set_color(COL_HINT);
+    console_write_at(sx + 47, 1, "关键字");
+    console_set_color(COL_BODY);
+    snprintf(buf, sizeof buf, "[%-16s]", s_bs_keyword);
+    if (s_bs_typing) console_set_color(ui_invert(COL_BODY));
+    console_write_at(sx + 55, 1, buf);
+    console_set_color(COL_BODY);
 
-    console_write_at(2, 3, "输入关键字后回车检索（空=全部）↑↓/PageUp/PageDown 选择 Enter=详情 Esc 取消输入");
+    /* ---- 列表 + 表格 ---- */
+    panel_h = s_rows - panel_y - 4;
+    if (panel_h < 6) panel_h = 6;
+    ui_panel(2, panel_y, s_cols - 4, panel_h, NULL);
+    snprintf(title, sizeof title, " 图书列表 · %zu 条 ", s_bs_count);
+    console_set_color(COL_TITLE);
+    console_write_at(4, panel_y, title);
+    console_set_color(COL_BODY);
+
+    hdr[0] = '\0';
+    ui_append(hdr, sizeof hdr, "ID", 4);
+    ui_append(hdr, sizeof hdr, "ISBN", 18);
+    ui_append(hdr, sizeof hdr, "书名", 26);
+    ui_append(hdr, sizeof hdr, "可借", 9);
+    ui_append(hdr, sizeof hdr, "位置", 10);
+    ui_append(hdr, sizeof hdr, "状态", 6);
+    console_set_color(COL_ACCENT);
+    console_write_at(4, panel_y + 1, hdr);
+    console_set_color(COL_BODY);
+    ui_sep(3, panel_y + 2, s_cols - 6);
+
+    row0 = panel_y + 3;
+    widget_set_rect(g_book_list, 4, row0, s_cols - 8, panel_h - 4);
     widget_draw(g_book_list);
-    draw_msg(2, 18);
 
+    draw_msg(4, s_rows - 4);
+
+    /* ---- 操作按钮 ---- */
+    by = s_rows - 3;
     if (admin) {
+        widget_set_rect(g_ba_new, 4, by, 12, 1);
+        widget_set_rect(g_ba_view, 18, by, 12, 1);
+        widget_set_rect(g_ba_edit, 32, by, 12, 1);
+        widget_set_rect(g_ba_del, 46, by, 12, 1);
+        widget_set_rect(g_ba_sus, 60, by, 16, 1);
+        widget_set_rect(g_ba_back, 78, by, 12, 1);
         widget_draw(g_ba_new);
+        widget_draw(g_ba_view);
         widget_draw(g_ba_edit);
         widget_draw(g_ba_del);
         widget_draw(g_ba_sus);
     } else {
-        console_write_at(2, 20, "只读检索（借阅功能将在 M3 提供）");
+        widget_set_rect(g_ba_view, 4, by, 12, 1);
+        widget_set_rect(g_ba_back, 18, by, 12, 1);
+        widget_draw(g_ba_view);
+        console_set_color(COL_HINT);
+        console_write_at(34, by, "只读检索（借阅功能将在 M3 提供）");
+        console_set_color(COL_BODY);
     }
-    widget_draw(g_ba_view);
     widget_draw(g_ba_back);
+    draw_hint_bar("↑↓ 选择 · Enter 详情 · A 新增 · E 编辑 · D 删除 · S 停借/恢复");
 }
 
 static const Book *bl_selected(void) {
@@ -1012,11 +1327,14 @@ static bool handle_book_list(const InputEvent *ev) {
         int lx, ly, lw, lh;
         bool changed = hover_changed(ev, btns, 6);
         if (left_press_edge(ev)) {
-            if (ev->y == 2 && ev->x >= 7 && ev->x <= 40) {
-                int f = (ev->x - 7) / 9;
+            if (ev->y == 1 && ev->x >= L_sx + 10 && ev->x < L_sx + 46) {
+                int f = (ev->x - (L_sx + 10)) / 9;
                 if (f >= 0 && f <= 3) { s_bs_field = f; bs_run_search(); return true; }
             }
-            if (ev->y == 2 && ev->x >= 52 && ev->x <= 71) { s_bs_typing = true; return true; }
+            if (ev->y == 1 && ev->x >= L_sx + 55 && ev->x < L_sx + 73) {
+                s_bs_typing = true;
+                return true;
+            }
             widget_get_rect(g_book_list, &lx, &ly, &lw, &lh);
             if (ev->y >= ly && ev->y < ly + lh && ev->x >= lx && ev->x < lx + lw) {
                 int row = ev->y - ly;
@@ -1150,29 +1468,54 @@ static void bf_save(void) {
 static void draw_book_form(void) {
     static const char *labels[] = {"ISBN", "书名", "作者", "出版社", "分类",
                                    "出版日期", "定价", "馆藏总数", "馆藏位置", "简介"};
-    char line[128], val[96];
+    char buf[160];
     const char *title = s_bf.mode == BF_ADD ? "新增图书"
                         : s_bf.mode == BF_EDIT ? "编辑图书" : "图书详情";
     bool ro = s_bf.mode == BF_VIEW;
-    int i;
+    int pw = 76, ph, px, py = 2, i;
 
-    console_write_at(2, 2, title);
-    if (!ro) console_write_at(2, 3, "作者/出版社/分类按名称匹配，须先在「字典管理」中创建");
-    for (i = 0; i < 10; i++) {
-        const char *v = bf_field(i);
-        int row = 5 + i;
-        snprintf(line, sizeof line, "%s:", labels[i]);
-        if (!ro) console_write_at(1, row, s_bf.focus == i ? "▶" : " ");
-        console_write_at(4, row, line);
-        snprintf(val, sizeof val, "%-72.72s", v);
-        console_write_at(20, row, val);
+    if (pw > s_cols - 6) pw = s_cols - 6;
+    px = (s_cols - pw) / 2;
+    ph = s_rows - 4;
+    if (ph < 18) ph = 18;
+
+    L_px = px;
+    L_py = py;
+    L_pw = pw;
+    L_ph = ph;
+    L_fx = px + 16;
+    L_fw = pw - 20;
+    L_fy = py + 4;
+    L_msg_y = py + ph - 2;
+
+    ui_panel(px, py, pw, ph, title);
+    if (!ro) {
+        console_set_color(COL_HINT);
+        console_write_at(px + 3, py + 2, "作者 / 出版社 / 分类按名称匹配，须先在「字典管理」中创建");
+        console_set_color(COL_BODY);
     }
-    if (ro) widget_draw(g_bf_back);
-    else {
+    for (i = 0; i < 10; i++) {
+        int row = L_fy + i;
+        console_set_color(!ro && s_bf.focus == i ? COL_ACCENT : COL_BODY);
+        console_write_at(px + 4, row, labels[i]);
+        console_set_color(COL_BODY);
+        ui_pad(buf, sizeof buf, bf_field(i), L_fw);
+        if (!ro && s_bf.focus != i) console_set_color(COL_HINT);
+        console_write_at(L_fx, row, buf);
+        console_set_color(COL_BODY);
+    }
+    ui_sep(px + 1, py + ph - 5, pw - 2);
+    if (ro) {
+        widget_set_rect(g_bf_back, (s_cols - 14) / 2, py + ph - 4, 14, 1);
+        widget_draw(g_bf_back);
+    } else {
+        widget_set_rect(g_bf_save, px + 18, py + ph - 4, 14, 1);
+        widget_set_rect(g_bf_cancel, px + pw - 32, py + ph - 4, 14, 1);
         widget_draw(g_bf_save);
         widget_draw(g_bf_cancel);
     }
-    draw_msg(2, 19);
+    draw_msg(px + 3, L_msg_y);
+    draw_hint_bar(ro ? "Enter/Esc 返回列表" : "Tab 切换字段 · Enter 下一项/保存 · Esc 取消");
 }
 
 static bool handle_book_form(const InputEvent *ev) {
@@ -1190,7 +1533,6 @@ static bool handle_book_form(const InputEvent *ev) {
         return false;
     }
     if (ev->type == EV_MOUSE) {
-        int i;
         if (ro) {
             bool changed = hover_changed(ev, (Widget *[]){g_bf_back}, 1);
             if (left_press_edge(ev) && widget_hit(g_bf_back, ev->x, ev->y)) {
@@ -1203,8 +1545,10 @@ static bool handle_book_form(const InputEvent *ev) {
         {
             bool changed = hover_changed(ev, (Widget *[]){g_bf_save, g_bf_cancel}, 2);
             if (left_press_edge(ev)) {
-                for (i = 0; i < 10; i++) {
-                    if (ev->y == 5 + i && ev->x >= 2 && ev->x <= 92) { s_bf.focus = i; return true; }
+                if (ev->y >= L_fy && ev->y < L_fy + 10 &&
+                    ev->x >= L_fx - 4 && ev->x < L_fx + L_fw) {
+                    s_bf.focus = ev->y - L_fy;
+                    return true;
                 }
                 if (widget_hit(g_bf_save, ev->x, ev->y)) { bf_save(); return true; }
                 if (widget_hit(g_bf_cancel, ev->x, ev->y)) {
@@ -1455,39 +1799,71 @@ static void dict_delete(void) { /* 二次确认 */
 }
 
 static void draw_dict(void) {
-    char buf[96];
-    int i;
-    dict_rebuild_rows();
-    if (s_dict.mode == 0) { /* 列表 */
-        widget_set_selected(g_dk_auth, s_dict.kind == DICT_AUTHOR);
-        widget_set_selected(g_dk_pub, s_dict.kind == DICT_PUB);
-        widget_set_selected(g_dk_cat, s_dict.kind == DICT_CAT);
-        widget_draw(g_dk_auth);
-        widget_draw(g_dk_pub);
-        widget_draw(g_dk_cat);
-        snprintf(buf, sizeof buf, "字典管理：%s（1/2/3 切换）", dict_kind_name());
-        console_write_at(40, 2, buf);
+    char buf[160];
+    int pw = 58, ph, px, py = 2, i;
+    if (pw > s_cols - 6) pw = s_cols - 6;
+    px = (s_cols - pw) / 2;
+    ph = s_rows - 5;
+    if (ph < 12) ph = 12;
+
+    L_px = px;
+    L_py = py;
+    L_pw = pw;
+    L_ph = ph;
+
+    /* 页签 */
+    widget_set_rect(g_dk_auth, px, 0, 12, 1);
+    widget_set_rect(g_dk_pub, px + 13, 0, 12, 1);
+    widget_set_rect(g_dk_cat, px + 26, 0, 12, 1);
+    widget_set_selected(g_dk_auth, s_dict.kind == DICT_AUTHOR);
+    widget_set_selected(g_dk_pub, s_dict.kind == DICT_PUB);
+    widget_set_selected(g_dk_cat, s_dict.kind == DICT_CAT);
+    widget_draw(g_dk_auth);
+    widget_draw(g_dk_pub);
+    widget_draw(g_dk_cat);
+
+    if (s_dict.mode == 0) { /* ---- 列表 ---- */
+        int by;
+        dict_rebuild_rows();
+        snprintf(buf, sizeof buf, "字典管理 · %s", dict_kind_name());
+        ui_panel(px, py, pw, ph, buf);
+        widget_set_rect(g_dict_list, px + 2, py + 2, pw - 4, ph - 4);
         widget_draw(g_dict_list);
-        console_write_at(2, 3, "A 新增 E 编辑 D 删除 Esc 返回");
-        draw_msg(2, 17);
+        by = py + ph - 2;
+        widget_set_rect(g_da_new, px + 2, by, 12, 1);
+        widget_set_rect(g_da_edit, px + 16, by, 12, 1);
+        widget_set_rect(g_da_del, px + 30, by, 12, 1);
+        widget_set_rect(g_da_back, px + pw - 14, by, 12, 1);
         widget_draw(g_da_new);
         widget_draw(g_da_edit);
         widget_draw(g_da_del);
         widget_draw(g_da_back);
-    } else { /* 表单 */
-        char val[96];
-        console_write_at(2, 2, s_dict.edit_id ? "编辑字典项" : "新增字典项");
+        draw_msg(px, py + ph + 1);
+        draw_hint_bar("1/2/3 切换字典 · A 新增 · E 编辑 · D 删除 · Esc 返回");
+    } else { /* ---- 表单 ---- */
+        snprintf(buf, sizeof buf, s_dict.edit_id ? "编辑%s" : "新增%s", dict_kind_name());
+        ui_panel(px, py, pw, ph, buf);
+        L_fx = px + 16;
+        L_fw = pw - 20;
+        L_fy = py + 3;
+        L_msg_y = py + ph - 2;
         for (i = 0; i < dict_count(); i++) {
-            int row = 5 + i;
-            snprintf(buf, sizeof buf, "%s:", dict_label(i));
-            console_write_at(1, row, s_dict.focus == i ? "▶" : " ");
-            console_write_at(4, row, buf);
-            snprintf(val, sizeof val, "%-64.64s", dict_val(i));
-            console_write_at(16, row, val);
+            int row = L_fy + i;
+            console_set_color(s_dict.focus == i ? COL_ACCENT : COL_BODY);
+            console_write_at(px + 4, row, dict_label(i));
+            console_set_color(COL_BODY);
+            ui_pad(buf, sizeof buf, dict_val(i), L_fw);
+            if (s_dict.focus != i) console_set_color(COL_HINT);
+            console_write_at(L_fx, row, buf);
+            console_set_color(COL_BODY);
         }
+        ui_sep(px + 1, py + ph - 5, pw - 2);
+        widget_set_rect(g_df_save, px + 18, py + ph - 4, 14, 1);
+        widget_set_rect(g_df_cancel, px + pw - 32, py + ph - 4, 14, 1);
         widget_draw(g_df_save);
         widget_draw(g_df_cancel);
-        draw_msg(2, 13);
+        draw_msg(px + 3, L_msg_y);
+        draw_hint_bar("Tab 切换字段 · Enter 下一项/保存 · Esc 取消");
     }
 }
 
@@ -1512,8 +1888,11 @@ static bool handle_dict(const InputEvent *ev) {
         if (ev->type == EV_MOUSE) {
             bool changed = hover_changed(ev, (Widget *[]){g_df_save, g_df_cancel}, 2);
             if (left_press_edge(ev)) {
-                for (i = 0; i < n; i++)
-                    if (ev->y == 5 + i && ev->x >= 2 && ev->x <= 80) { s_dict.focus = i; return true; }
+                if (ev->y >= L_fy && ev->y < L_fy + n &&
+                    ev->x >= L_fx - 4 && ev->x < L_fx + L_fw) {
+                    s_dict.focus = ev->y - L_fy;
+                    return true;
+                }
                 if (widget_hit(g_df_save, ev->x, ev->y)) { dict_save(); return true; }
                 if (widget_hit(g_df_cancel, ev->x, ev->y)) {
                     s_dict.mode = 0;
@@ -1594,25 +1973,43 @@ static void pwd_save(void) {
 
 static void draw_change_pwd(void) {
     static const char *labels[] = {"旧密码", "新密码", "确认新密码"};
-    char line[64], val[48];
-    int i;
-    console_write_at(30, 3, "┌──────────────────────────────┐");
-    console_write_at(30, 4, "│          修改密码            │");
-    console_write_at(30, 5, "└──────────────────────────────┘");
+    char buf[80];
+    int pw = 46, ph = 11, px, py = 4, i;
+    if (pw > s_cols - 8) pw = s_cols - 8;
+    px = (s_cols - pw) / 2;
+
+    L_px = px;
+    L_py = py;
+    L_pw = pw;
+    L_ph = ph;
+    L_fx = px + 14;
+    L_fw = pw - 18;
+    L_fy = py + 3;
+    L_msg_y = py + ph - 2;
+
+    ui_panel(px, py, pw, ph, "修改密码");
+    console_set_color(COL_HINT);
+    console_write_at(px + 3, py + 1, "新密码不少于 6 位");
+    console_set_color(COL_BODY);
     for (i = 0; i < 3; i++) {
         char *v = i == 0 ? s_pwd.old_pwd : i == 1 ? s_pwd.new_pwd : s_pwd.confirm;
-        int row = 6 + i;
-        size_t j, n = strlen(v);
-        snprintf(line, sizeof line, "%s:", labels[i]);
-        console_write_at(33, row, i == s_pwd.focus ? "▶" : " ");
-        console_write_at(36, row, line);
-        for (j = 0; j < 22; j++) val[j] = j < n ? '*' : ' ';
-        val[22] = '\0';
-        console_write_at(47, row, val);
+        int row = L_fy + i, j;
+        size_t n = strlen(v);
+        console_set_color(s_pwd.focus == i ? COL_ACCENT : COL_BODY);
+        console_write_at(px + 4, row, labels[i]);
+        console_set_color(COL_BODY);
+        for (j = 0; j < L_fw; j++) buf[j] = j < (int)n ? '*' : ' ';
+        buf[L_fw] = '\0';
+        if (s_pwd.focus != i) console_set_color(COL_HINT);
+        console_write_at(L_fx, row, buf);
+        console_set_color(COL_BODY);
     }
+    ui_sep(px + 1, py + 6, pw - 2);
+    widget_set_rect(g_pwd_ok, px + 7, py + 7, 14, 1);
+    widget_set_rect(g_pwd_cancel, px + pw - 21, py + 7, 14, 1);
     widget_draw(g_pwd_ok);
     widget_draw(g_pwd_cancel);
-    draw_msg(32, 12);
+    draw_msg(px + 3, L_msg_y);
 }
 
 static bool handle_change_pwd(const InputEvent *ev) {
@@ -1632,11 +2029,13 @@ static bool handle_change_pwd(const InputEvent *ev) {
         return false;
     }
     if (ev->type == EV_MOUSE) {
-        int i;
         bool changed = hover_changed(ev, (Widget *[]){g_pwd_ok, g_pwd_cancel}, 2);
         if (left_press_edge(ev)) {
-            for (i = 0; i < 3; i++)
-                if (ev->y == 6 + i && ev->x >= 33 && ev->x <= 68) { s_pwd.focus = i; return true; }
+            if (ev->y >= L_fy && ev->y < L_fy + 3 &&
+                ev->x >= L_fx - 4 && ev->x < L_fx + L_fw) {
+                s_pwd.focus = ev->y - L_fy;
+                return true;
+            }
             if (widget_hit(g_pwd_ok, ev->x, ev->y)) { pwd_save(); return true; }
             if (widget_hit(g_pwd_cancel, ev->x, ev->y)) {
                 s_msg[0] = '\0';

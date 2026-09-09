@@ -99,6 +99,7 @@ typedef struct {
     size_t reservation_count;
     size_t reservation_capacity;
     wchar_t data_directory[MAX_PATH];
+    HANDLE transaction_mutex;
 } LibraryRepository;
 
 typedef enum {
@@ -131,6 +132,7 @@ bool library_repository_init(
     const wchar_t *data_directory
 );
 void library_repository_dispose(LibraryRepository *repository);
+bool library_repository_sync(LibraryRepository *repository);
 const Book *library_find_book(const LibraryRepository *repository, int id);
 const Loan *library_find_loan(const LibraryRepository *repository, int id);
 const Fine *library_find_fine(const LibraryRepository *repository, int id);

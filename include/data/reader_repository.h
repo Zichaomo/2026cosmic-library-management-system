@@ -38,6 +38,7 @@ typedef struct {
     size_t count;
     size_t capacity;
     wchar_t file_path[MAX_PATH];
+    HANDLE transaction_mutex;
 } ReaderRepository;
 
 bool reader_repository_init(
@@ -45,6 +46,7 @@ bool reader_repository_init(
     const wchar_t *data_directory
 );
 void reader_repository_dispose(ReaderRepository *repository);
+bool reader_repository_sync(ReaderRepository *repository);
 const ReaderAccount *reader_repository_find_by_number(
     const ReaderRepository *repository,
     const wchar_t *reader_no

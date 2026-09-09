@@ -72,6 +72,17 @@ bool input_read(Input *input, UiEvent *event) {
         DWORD read_count = 0;
         memset(event, 0, sizeof(*event));
 
+        const DWORD wait_result = WaitForSingleObject(
+            input->console->input, 1000
+        );
+        if (wait_result == WAIT_TIMEOUT) {
+            event->type = UI_EVENT_REFRESH;
+            return true;
+        }
+        if (wait_result != WAIT_OBJECT_0) {
+            return false;
+        }
+
         if (!ReadConsoleInputW(
                 input->console->input, &record, 1, &read_count
             ) || read_count != 1) {

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
+#include <wctype.h>
 
 #include "data/csv.h"
 #include "utils/text.h"
@@ -14,6 +15,46 @@ enum {
     READER_CSV_FIELD_COUNT = 9,
     UTF8_BUFFER_CAPACITY = 512
 };
+
+static bool save_unlocked(const ReaderRepository *repository);
+
+static unsigned long long data_directory_hash(const wchar_t *path) {
+    unsigned long long hash = 1469598103934665603ULL;
+    for (const wchar_t *cursor = path; *cursor != L'\0'; ++cursor) {
+        hash ^= (unsigned long long)towlower(*cursor);
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+static HANDLE create_transaction_mutex(const wchar_t *data_directory) {
+    wchar_t name[96];
+    if (swprintf(
+            name,
+            sizeof(name) / sizeof(name[0]),
+            L"Local\\CosmicLibraryData_%016llX",
+            data_directory_hash(data_directory)
+        ) < 0) {
+        return NULL;
+    }
+    return CreateMutexW(NULL, FALSE, name);
+}
+
+static bool lock_repository(ReaderRepository *repository) {
+    if (repository == NULL || repository->transaction_mutex == NULL) {
+        return false;
+    }
+    const DWORD result = WaitForSingleObject(
+        repository->transaction_mutex, INFINITE
+    );
+    return result == WAIT_OBJECT_0 || result == WAIT_ABANDONED;
+}
+
+static void unlock_repository(ReaderRepository *repository) {
+    if (repository != NULL && repository->transaction_mutex != NULL) {
+        ReleaseMutex(repository->transaction_mutex);
+    }
+}
 
 static const wchar_t *status_to_text(ReaderStatus status) {
     switch (status) {
@@ -142,6 +183,21 @@ static bool load_accounts(ReaderRepository *repository) {
     return success;
 }
 
+static bool reload_from_disk_unlocked(ReaderRepository *repository) {
+    ReaderRepository loaded;
+    memset(&loaded, 0, sizeof(loaded));
+    wcsncpy(loaded.file_path, repository->file_path, MAX_PATH - 1);
+    if (!load_accounts(&loaded)) {
+        free(loaded.items);
+        return false;
+    }
+    free(repository->items);
+    repository->items = loaded.items;
+    repository->count = loaded.count;
+    repository->capacity = loaded.capacity;
+    return true;
+}
+
 static bool write_field(FILE *file, const char *field, bool last) {
     return csv_write_field(file, field) &&
            (last ? fputs("\r\n", file) >= 0 : fputc(',', file) != EOF);
@@ -191,19 +247,37 @@ bool reader_repository_init(
     }
 
     memset(repository, 0, sizeof(*repository));
-    if (!CreateDirectoryW(data_directory, NULL) &&
-        GetLastError() != ERROR_ALREADY_EXISTS) {
+    wchar_t absolute_directory[MAX_PATH];
+    const DWORD path_length = GetFullPathNameW(
+        data_directory, MAX_PATH, absolute_directory, NULL
+    );
+    if (path_length == 0 || path_length >= MAX_PATH ||
+        (!CreateDirectoryW(absolute_directory, NULL) &&
+         GetLastError() != ERROR_ALREADY_EXISTS)) {
         return false;
     }
     if (swprintf(
             repository->file_path,
             MAX_PATH,
             L"%ls\\readers.csv",
-            data_directory
+            absolute_directory
         ) < 0) {
         return false;
     }
-    return load_accounts(repository);
+    repository->transaction_mutex = create_transaction_mutex(
+        absolute_directory
+    );
+    if (repository->transaction_mutex == NULL ||
+        !lock_repository(repository)) {
+        reader_repository_dispose(repository);
+        return false;
+    }
+    const bool success = load_accounts(repository);
+    unlock_repository(repository);
+    if (!success) {
+        reader_repository_dispose(repository);
+    }
+    return success;
 }
 
 void reader_repository_dispose(ReaderRepository *repository) {
@@ -211,7 +285,19 @@ void reader_repository_dispose(ReaderRepository *repository) {
         return;
     }
     free(repository->items);
+    if (repository->transaction_mutex != NULL) {
+        CloseHandle(repository->transaction_mutex);
+    }
     memset(repository, 0, sizeof(*repository));
+}
+
+bool reader_repository_sync(ReaderRepository *repository) {
+    if (!lock_repository(repository)) {
+        return false;
+    }
+    const bool success = reload_from_disk_unlocked(repository);
+    unlock_repository(repository);
+    return success;
 }
 
 const ReaderAccount *reader_repository_find_by_number(
@@ -262,21 +348,30 @@ bool reader_repository_add(
     const ReaderAccount *account
 ) {
     if (repository == NULL || account == NULL ||
+        !lock_repository(repository)) {
+        return false;
+    }
+    if (!reload_from_disk_unlocked(repository) ||
         reader_repository_find_by_number(
             repository, account->reader_no
         ) != NULL || !ensure_capacity(repository)) {
+        unlock_repository(repository);
         return false;
     }
 
-    repository->items[repository->count++] = *account;
-    if (!reader_repository_save(repository)) {
+    ReaderAccount stored = *account;
+    stored.id = reader_repository_next_id(repository);
+    repository->items[repository->count++] = stored;
+    if (!save_unlocked(repository)) {
         --repository->count;
+        unlock_repository(repository);
         return false;
     }
+    unlock_repository(repository);
     return true;
 }
 
-bool reader_repository_save(const ReaderRepository *repository) {
+static bool save_unlocked(const ReaderRepository *repository) {
     if (repository == NULL) {
         return false;
     }
@@ -322,11 +417,25 @@ bool reader_repository_save(const ReaderRepository *repository) {
     return true;
 }
 
+bool reader_repository_save(const ReaderRepository *repository) {
+    ReaderRepository *mutable_repository = (ReaderRepository *)repository;
+    if (!lock_repository(mutable_repository)) {
+        return false;
+    }
+    const bool success = save_unlocked(repository);
+    unlock_repository(mutable_repository);
+    return success;
+}
+
 bool reader_repository_toggle_frozen(
     ReaderRepository *repository,
     int reader_id
 ) {
-    if (repository == NULL) {
+    if (repository == NULL || !lock_repository(repository)) {
+        return false;
+    }
+    if (!reload_from_disk_unlocked(repository)) {
+        unlock_repository(repository);
         return false;
     }
     for (size_t index = 0; index < repository->count; ++index) {
@@ -338,11 +447,14 @@ bool reader_repository_toggle_frozen(
         const ReaderStatus old_status = reader->status;
         reader->status = old_status == READER_STATUS_FROZEN
             ? READER_STATUS_NORMAL : READER_STATUS_FROZEN;
-        if (!reader_repository_save(repository)) {
+        if (!save_unlocked(repository)) {
             reader->status = old_status;
+            unlock_repository(repository);
             return false;
         }
+        unlock_repository(repository);
         return true;
     }
+    unlock_repository(repository);
     return false;
 }

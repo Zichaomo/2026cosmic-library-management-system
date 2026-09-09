@@ -240,7 +240,7 @@ void circulation_screen_draw_admin_loans(
     ScreenLayout layout;
     screen_draw_shell(
         console, L"宇宙图书馆管理系统", L" 借阅管理 ",
-        L"↑↓/Tab 选择  Enter 代办还书  O 模拟逾期3天  Esc 返回"
+        L"↑↓选择  B 办理借书  Enter 还书  O 模拟逾期  Esc 返回"
     );
     if (!screen_get_layout(console, &layout)) {
         return;

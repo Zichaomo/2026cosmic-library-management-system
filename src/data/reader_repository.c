@@ -229,6 +229,21 @@ const ReaderAccount *reader_repository_find_by_number(
     return NULL;
 }
 
+const ReaderAccount *reader_repository_find_by_id(
+    const ReaderRepository *repository,
+    int reader_id
+) {
+    if (repository == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0; index < repository->count; ++index) {
+        if (repository->items[index].id == reader_id) {
+            return &repository->items[index];
+        }
+    }
+    return NULL;
+}
+
 int reader_repository_next_id(const ReaderRepository *repository) {
     int next_id = 1;
     if (repository == NULL) {
@@ -307,3 +322,27 @@ bool reader_repository_save(const ReaderRepository *repository) {
     return true;
 }
 
+bool reader_repository_toggle_frozen(
+    ReaderRepository *repository,
+    int reader_id
+) {
+    if (repository == NULL) {
+        return false;
+    }
+    for (size_t index = 0; index < repository->count; ++index) {
+        ReaderAccount *reader = &repository->items[index];
+        if (reader->id != reader_id ||
+            reader->status == READER_STATUS_CANCELLED) {
+            continue;
+        }
+        const ReaderStatus old_status = reader->status;
+        reader->status = old_status == READER_STATUS_FROZEN
+            ? READER_STATUS_NORMAL : READER_STATUS_FROZEN;
+        if (!reader_repository_save(repository)) {
+            reader->status = old_status;
+            return false;
+        }
+        return true;
+    }
+    return false;
+}

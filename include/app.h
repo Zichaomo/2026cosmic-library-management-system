@@ -6,6 +6,7 @@
 #include "core/auth.h"
 #include "data/library_repository.h"
 #include "data/reader_repository.h"
+#include "ui/admin_screen.h"
 #include "ui/console.h"
 #include "ui/input.h"
 #include "ui/login_screen.h"
@@ -20,8 +21,13 @@ typedef enum {
     APP_PAGE_BOOK_CATALOG,
     APP_PAGE_READER_LOANS,
     APP_PAGE_READER_FINES,
+    APP_PAGE_ADMIN_BOOKS,
+    APP_PAGE_ADMIN_ADD_BOOK,
+    APP_PAGE_ADMIN_READERS,
     APP_PAGE_ADMIN_LOANS,
-    APP_PAGE_ADMIN_FINES
+    APP_PAGE_ADMIN_BORROW,
+    APP_PAGE_ADMIN_FINES,
+    APP_PAGE_ADMIN_STATS
 } AppPage;
 
 typedef struct {
@@ -29,6 +35,8 @@ typedef struct {
     Input input;
     LoginForm login_form;
     RegisterForm register_form;
+    AdminBookForm admin_book_form;
+    AdminBorrowForm admin_borrow_form;
     ReaderRepository readers;
     LibraryRepository library;
     UserSession session;

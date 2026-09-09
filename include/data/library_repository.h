@@ -94,6 +94,8 @@ typedef enum {
     LIBRARY_RESULT_LOAN_OVERDUE,
     LIBRARY_RESULT_FINE_NOT_FOUND,
     LIBRARY_RESULT_FINE_PAID,
+    LIBRARY_RESULT_INVALID_INPUT,
+    LIBRARY_RESULT_DUPLICATE_ISBN,
     LIBRARY_RESULT_STORAGE_ERROR
 } LibraryResult;
 
@@ -165,6 +167,22 @@ LibraryResult library_mark_loan_overdue_for_demo(
     LibraryRepository *repository,
     int loan_id,
     int overdue_days
+);
+LibraryResult library_add_book(
+    LibraryRepository *repository,
+    const wchar_t *isbn,
+    const wchar_t *title,
+    const wchar_t *author,
+    int copies,
+    int *book_id
+);
+LibraryResult library_add_book_copy(
+    LibraryRepository *repository,
+    int book_id
+);
+LibraryResult library_toggle_book_status(
+    LibraryRepository *repository,
+    int book_id
 );
 
 #endif

@@ -9,7 +9,8 @@
 typedef enum {
     UI_EVENT_NONE = 0,
     UI_EVENT_KEY,
-    UI_EVENT_RESIZE
+    UI_EVENT_RESIZE,
+    UI_EVENT_REFRESH
 } UiEventType;
 
 typedef enum {

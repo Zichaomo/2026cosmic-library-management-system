@@ -360,6 +360,83 @@ int main(void) {
         "reload books loans fines and reservations after restart"
     );
 
+    LibraryRepository second_library;
+    check(
+        library_repository_init(
+            &second_library, L"tests\\tmp_circulation"
+        ),
+        "open a second terminal repository"
+    );
+    int shared_book_id = 0;
+    check(
+        library_add_book(
+            &library, L"9787300000999", L"多终端同步测试",
+            L"系统测试", 1, &shared_book_id
+        ) == LIBRARY_RESULT_SUCCESS &&
+        library_repository_sync(&second_library) &&
+        library_find_book(&second_library, shared_book_id) != NULL,
+        "second terminal sees newly added book"
+    );
+    const size_t shared_loan_count = library.loan_count;
+    int shared_loan_id = 0;
+    check(
+        library_borrow_book_at(
+            &library, &readers, reader_id, shared_book_id,
+            local_date(2026, 4, 1), &shared_loan_id
+        ) == LIBRARY_RESULT_SUCCESS &&
+        library_borrow_book_at(
+            &second_library, &readers, reader_two_id, shared_book_id,
+            local_date(2026, 4, 1), NULL
+        ) == LIBRARY_RESULT_BOOK_UNAVAILABLE &&
+        library_repository_sync(&library) &&
+        library.loan_count == shared_loan_count + 1 &&
+        library_find_book(&library, shared_book_id)->available_copies == 0,
+        "stale terminal cannot lend the final copy twice"
+    );
+    check(
+        library_return_loan_at(
+            &second_library, shared_loan_id, local_date(2026, 4, 2), NULL
+        ) == LIBRARY_RESULT_SUCCESS &&
+        library_repository_sync(&library) &&
+        library_find_book(&library, shared_book_id)->available_copies == 1,
+        "return from second terminal appears in first terminal"
+    );
+
+    ReaderRepository second_readers;
+    check(
+        reader_repository_init(
+            &second_readers, L"tests\\tmp_circulation"
+        ),
+        "open a second terminal reader repository"
+    );
+    const ReaderRegistrationRequest shared_reader_one = {
+        L"shared-reader-1", L"同步读者一", L"reader123", L"reader123", L"20001"
+    };
+    const ReaderRegistrationRequest shared_reader_two = {
+        L"shared-reader-2", L"同步读者二", L"reader123", L"reader123", L"20002"
+    };
+    check(
+        auth_register_reader(&readers, &shared_reader_one) ==
+            REGISTER_RESULT_SUCCESS &&
+        auth_register_reader(&second_readers, &shared_reader_two) ==
+            REGISTER_RESULT_SUCCESS &&
+        reader_repository_sync(&readers) &&
+        reader_repository_find_by_number(
+            &readers, L"shared-reader-1"
+        ) != NULL &&
+        reader_repository_find_by_number(
+            &readers, L"shared-reader-2"
+        ) != NULL &&
+        reader_repository_find_by_number(
+            &readers, L"shared-reader-1"
+        )->id != reader_repository_find_by_number(
+            &readers, L"shared-reader-2"
+        )->id,
+        "registrations from two terminals do not overwrite each other"
+    );
+
+    reader_repository_dispose(&second_readers);
+    library_repository_dispose(&second_library);
     library_repository_dispose(&library);
     reader_repository_dispose(&readers);
     clean_test_data();

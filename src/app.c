@@ -1199,6 +1199,30 @@ static void handle_admin_management_event(App *app, const UiEvent *event) {
     }
 }
 
+static bool resolve_data_directory(wchar_t path[MAX_PATH]) {
+    const DWORD length = GetModuleFileNameW(NULL, path, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) {
+        return false;
+    }
+    wchar_t *separator = wcsrchr(path, L'\\');
+    if (separator == NULL) {
+        return false;
+    }
+    *separator = L'\0';
+    separator = wcsrchr(path, L'\\');
+    if (separator == NULL) {
+        return false;
+    }
+    *separator = L'\0';
+    const size_t root_length = wcslen(path);
+    static const wchar_t suffix[] = L"\\data";
+    if (root_length + sizeof(suffix) / sizeof(suffix[0]) > MAX_PATH) {
+        return false;
+    }
+    wcscat(path, suffix);
+    return true;
+}
+
 bool app_init(App *app) {
     if (app == NULL) {
         return false;
@@ -1219,12 +1243,14 @@ bool app_init(App *app) {
     admin_borrow_form_init(&app->admin_borrow_form);
     auth_session_clear(&app->session);
 
-    if (!reader_repository_init(&app->readers, L"data")) {
+    wchar_t data_directory[MAX_PATH];
+    if (!resolve_data_directory(data_directory) ||
+        !reader_repository_init(&app->readers, data_directory)) {
         console_shutdown(&app->console);
         return false;
     }
 
-    if (!library_repository_init(&app->library, L"data")) {
+    if (!library_repository_init(&app->library, data_directory)) {
         reader_repository_dispose(&app->readers);
         console_shutdown(&app->console);
         return false;
@@ -1254,6 +1280,16 @@ int app_run(App *app) {
         UiEvent event;
         if (!input_read(&app->input, &event)) {
             return EXIT_FAILURE;
+        }
+
+        if (!reader_repository_sync(&app->readers) ||
+            !library_repository_sync(&app->library)) {
+            set_status(
+                app,
+                L"数据同步失败，请检查 data 目录是否可读写。"
+            );
+        } else if (event.type == UI_EVENT_KEY && event.key == UI_KEY_F5) {
+            set_status(app, L"已从其他终端同步最新数据。");
         }
 
         if (event.type == UI_EVENT_KEY && event.key == UI_KEY_CTRL_Q) {

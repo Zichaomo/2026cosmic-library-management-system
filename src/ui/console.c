@@ -36,7 +36,7 @@ static void write_utf8_fallback(const wchar_t *text) {
         return;
     }
 
-    char *utf8 = malloc((size_t)size);
+char *utf8 = malloc((size_t)size);
     if (utf8 == NULL) {
         return;
     }

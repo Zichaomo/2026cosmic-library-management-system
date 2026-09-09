@@ -36,6 +36,7 @@ void widget_free(Widget *w);
 /* ---- 控件状态 ---- */
 /* 设置悬停/选中高亮（由页面在绘制前设置） */
 void widget_set_hover(Widget *w, bool hover);
+bool widget_get_hover(const Widget *w); /* 查询悬停状态（用于判断是否需要重绘） */
 void widget_set_selected(Widget *w, bool selected);
 
 /* 列表数据（复制字符串；items 可为 NULL 表示清空） */

@@ -44,7 +44,12 @@ int main(void) {
     while (!g_app_quit) {
         InputEvent ev;
         if (input_read(&ev, 200)) {
-            if (screen_handle(&ev)) screen_draw();
+            bool dirty = screen_handle(&ev);
+            /* 抽干已排队事件后只重绘一次：鼠标快速移动时避免逐事件整屏刷新 */
+            while (!g_app_quit && input_poll(&ev)) {
+                if (screen_handle(&ev)) dirty = true;
+            }
+            if (dirty) screen_draw();
         }
     }
 

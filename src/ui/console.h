@@ -29,6 +29,9 @@ void console_draw_box(int x, int y, int w, int h);
 /* 清屏（填当前背景色） */
 void console_clear(void);
 
+/* 将后台缓冲一次性输出到屏幕（每帧绘制结束后调用，消除闪烁） */
+void console_present(void);
+
 /* 是否运行在真实控制台环境（标准输入为控制台句柄）。
    管道/重定向运行返回 false，用于降级为非交互模式。 */
 bool console_is_tty(void);

@@ -202,9 +202,18 @@ static bool left_press_edge(const InputEvent *ev) {
     return false;
 }
 
-static void update_btn_hover(const InputEvent *ev, Widget **btns, int n) {
+/* 更新按钮悬停状态；返回"是否有变化"（用于避免无意义的整屏重绘） */
+static bool hover_changed(const InputEvent *ev, Widget **btns, int n) {
+    bool changed = false;
     int i;
-    for (i = 0; i < n; i++) widget_set_hover(btns[i], widget_hit(btns[i], ev->x, ev->y));
+    for (i = 0; i < n; i++) {
+        bool h = widget_hit(btns[i], ev->x, ev->y);
+        if (h != widget_get_hover(btns[i])) {
+            widget_set_hover(btns[i], h);
+            changed = true;
+        }
+    }
+    return changed;
 }
 
 /* ---------- 控件构建（一次性） ---------- */
@@ -464,6 +473,7 @@ void screen_draw(void) {
     default: break;
     }
     draw_status_bar();
+    console_present(); /* 后台缓冲一次性刷新（消除闪烁） */
 }
 
 /* ---------- 动作 ---------- */
@@ -584,15 +594,16 @@ static bool handle_menu(const InputEvent *ev, Widget *list, int count, MenuActio
     if (ev->type == EV_MOUSE) {
         int lx, ly, lw, lh;
         widget_get_rect(list, &lx, &ly, &lw, &lh);
-        if (ev->y >= ly && ev->y < ly + lh && ev->x >= lx && ev->x < lx + lw) {
+        if (left_press_edge(ev) && ev->y >= ly && ev->y < ly + lh &&
+            ev->x >= lx && ev->x < lx + lw) {
             int row = ev->y - ly;
             if (row < count) {
                 widget_list_set_sel(list, row);
-                if (left_press_edge(ev)) act(row);
+                act(row);
             }
             return true;
         }
-        return true; /* 鼠标在别处：仅刷新 */
+        return false; /* 移动/悬停：菜单列表无悬停高亮，无需重绘 */
     }
     return false;
 }
@@ -608,16 +619,16 @@ static bool handle_welcome(const InputEvent *ev) {
     }
     if (ev->type == EV_MOUSE) {
         int i;
-        update_btn_hover(ev, g_welcome_btns, 4);
+        bool changed = hover_changed(ev, g_welcome_btns, 4);
         if (left_press_edge(ev)) {
             for (i = 0; i < 4; i++) {
                 if (widget_hit(g_welcome_btns[i], ev->x, ev->y)) {
                     welcome_action(i);
-                    break;
+                    return true;
                 }
             }
         }
-        return true;
+        return changed;
     }
     return false;
 }
@@ -637,14 +648,14 @@ static bool handle_login(const InputEvent *ev) {
         return false;
     }
     if (ev->type == EV_MOUSE) {
-        update_btn_hover(ev, g_login_btns, 2);
+        bool changed = hover_changed(ev, g_login_btns, 2);
         if (left_press_edge(ev)) {
-            if (ev->y == 6 && ev->x >= 33 && ev->x <= 69) s_login.focus = 0;
-            else if (ev->y == 7 && ev->x >= 33 && ev->x <= 69) s_login.focus = 1;
-            else if (widget_hit(g_login_btns[0], ev->x, ev->y)) do_login();
-            else if (widget_hit(g_login_btns[1], ev->x, ev->y)) screen_back();
+            if (ev->y == 6 && ev->x >= 33 && ev->x <= 69) { s_login.focus = 0; return true; }
+            if (ev->y == 7 && ev->x >= 33 && ev->x <= 69) { s_login.focus = 1; return true; }
+            if (widget_hit(g_login_btns[0], ev->x, ev->y)) { do_login(); return true; }
+            if (widget_hit(g_login_btns[1], ev->x, ev->y)) { screen_back(); return true; }
         }
-        return true;
+        return changed;
     }
     return false;
 }
@@ -665,7 +676,7 @@ static bool handle_register(const InputEvent *ev) {
     }
     if (ev->type == EV_MOUSE) {
         int i;
-        update_btn_hover(ev, g_reg_btns, 2);
+        bool changed = hover_changed(ev, g_reg_btns, 2);
         if (left_press_edge(ev)) {
             for (i = 0; i < 6; i++) {
                 if (ev->y == 6 + i && ev->x >= 28 && ev->x <= 73) {
@@ -673,22 +684,22 @@ static bool handle_register(const InputEvent *ev) {
                     return true;
                 }
             }
-            if (widget_hit(g_reg_btns[0], ev->x, ev->y)) do_register();
-            else if (widget_hit(g_reg_btns[1], ev->x, ev->y)) screen_back();
+            if (widget_hit(g_reg_btns[0], ev->x, ev->y)) { do_register(); return true; }
+            if (widget_hit(g_reg_btns[1], ev->x, ev->y)) { screen_back(); return true; }
         }
-        return true;
+        return changed;
     }
     return false;
 }
 
 static bool handle_help(const InputEvent *ev) {
     if (ev->type == EV_MOUSE) {
-        widget_set_hover(g_help_btn, widget_hit(g_help_btn, ev->x, ev->y));
+        bool changed = hover_changed(ev, (Widget *[]){g_help_btn}, 1);
         if (left_press_edge(ev) && widget_hit(g_help_btn, ev->x, ev->y)) {
             screen_back();
             return true;
         }
-        return true;
+        return changed;
     }
     return false;
 }
@@ -999,7 +1010,7 @@ static bool handle_book_list(const InputEvent *ev) {
     if (ev->type == EV_MOUSE) {
         Widget *btns[6] = {g_ba_new, g_ba_view, g_ba_edit, g_ba_del, g_ba_sus, g_ba_back};
         int lx, ly, lw, lh;
-        update_btn_hover(ev, btns, 6);
+        bool changed = hover_changed(ev, btns, 6);
         if (left_press_edge(ev)) {
             if (ev->y == 2 && ev->x >= 7 && ev->x <= 40) {
                 int f = (ev->x - 7) / 9;
@@ -1020,9 +1031,10 @@ static bool handle_book_list(const InputEvent *ev) {
             else if (widget_hit(g_ba_back, ev->x, ev->y)) {
                 s_msg[0] = '\0';
                 screen_back();
+                return true;
             }
         }
-        return true;
+        return changed;
     }
     return false;
 }
@@ -1180,22 +1192,29 @@ static bool handle_book_form(const InputEvent *ev) {
     if (ev->type == EV_MOUSE) {
         int i;
         if (ro) {
-            widget_set_hover(g_bf_back, widget_hit(g_bf_back, ev->x, ev->y));
+            bool changed = hover_changed(ev, (Widget *[]){g_bf_back}, 1);
             if (left_press_edge(ev) && widget_hit(g_bf_back, ev->x, ev->y)) {
                 s_msg[0] = '\0';
                 screen_back();
+                return true;
             }
-            return true;
+            return changed;
         }
-        update_btn_hover(ev, (Widget *[]){g_bf_save, g_bf_cancel}, 2);
-        if (left_press_edge(ev)) {
-            for (i = 0; i < 10; i++) {
-                if (ev->y == 5 + i && ev->x >= 2 && ev->x <= 92) { s_bf.focus = i; return true; }
+        {
+            bool changed = hover_changed(ev, (Widget *[]){g_bf_save, g_bf_cancel}, 2);
+            if (left_press_edge(ev)) {
+                for (i = 0; i < 10; i++) {
+                    if (ev->y == 5 + i && ev->x >= 2 && ev->x <= 92) { s_bf.focus = i; return true; }
+                }
+                if (widget_hit(g_bf_save, ev->x, ev->y)) { bf_save(); return true; }
+                if (widget_hit(g_bf_cancel, ev->x, ev->y)) {
+                    s_msg[0] = '\0';
+                    screen_back();
+                    return true;
+                }
             }
-            if (widget_hit(g_bf_save, ev->x, ev->y)) bf_save();
-            else if (widget_hit(g_bf_cancel, ev->x, ev->y)) { s_msg[0] = '\0'; screen_back(); }
+            return changed;
         }
-        return true;
     }
     return false;
 }
@@ -1491,17 +1510,18 @@ static bool handle_dict(const InputEvent *ev) {
             return false;
         }
         if (ev->type == EV_MOUSE) {
-            update_btn_hover(ev, (Widget *[]){g_df_save, g_df_cancel}, 2);
+            bool changed = hover_changed(ev, (Widget *[]){g_df_save, g_df_cancel}, 2);
             if (left_press_edge(ev)) {
                 for (i = 0; i < n; i++)
                     if (ev->y == 5 + i && ev->x >= 2 && ev->x <= 80) { s_dict.focus = i; return true; }
-                if (widget_hit(g_df_save, ev->x, ev->y)) dict_save();
-                else if (widget_hit(g_df_cancel, ev->x, ev->y)) {
+                if (widget_hit(g_df_save, ev->x, ev->y)) { dict_save(); return true; }
+                if (widget_hit(g_df_cancel, ev->x, ev->y)) {
                     s_dict.mode = 0;
                     s_dict_rebuild = true;
+                    return true;
                 }
             }
-            return true;
+            return changed;
         }
         return false;
     }
@@ -1529,8 +1549,8 @@ static bool handle_dict(const InputEvent *ev) {
         int lx, ly, lw, lh;
         Widget *top[3] = {g_dk_auth, g_dk_pub, g_dk_cat};
         Widget *acts[4] = {g_da_new, g_da_edit, g_da_del, g_da_back};
-        update_btn_hover(ev, top, 3);
-        update_btn_hover(ev, acts, 4);
+        bool changed = hover_changed(ev, top, 3);
+        if (hover_changed(ev, acts, 4)) changed = true;
         if (left_press_edge(ev)) {
             for (i = 0; i < 3; i++)
                 if (widget_hit(top[i], ev->x, ev->y)) { dict_set_kind((DictKind)i); return true; }
@@ -1545,9 +1565,10 @@ static bool handle_dict(const InputEvent *ev) {
             else if (widget_hit(g_da_back, ev->x, ev->y)) {
                 s_msg[0] = '\0';
                 screen_back();
+                return true;
             }
         }
-        return true;
+        return changed;
     }
     return false;
 }
@@ -1612,17 +1633,18 @@ static bool handle_change_pwd(const InputEvent *ev) {
     }
     if (ev->type == EV_MOUSE) {
         int i;
-        update_btn_hover(ev, (Widget *[]){g_pwd_ok, g_pwd_cancel}, 2);
+        bool changed = hover_changed(ev, (Widget *[]){g_pwd_ok, g_pwd_cancel}, 2);
         if (left_press_edge(ev)) {
             for (i = 0; i < 3; i++)
                 if (ev->y == 6 + i && ev->x >= 33 && ev->x <= 68) { s_pwd.focus = i; return true; }
-            if (widget_hit(g_pwd_ok, ev->x, ev->y)) pwd_save();
-            else if (widget_hit(g_pwd_cancel, ev->x, ev->y)) {
+            if (widget_hit(g_pwd_ok, ev->x, ev->y)) { pwd_save(); return true; }
+            if (widget_hit(g_pwd_cancel, ev->x, ev->y)) {
                 s_msg[0] = '\0';
                 screen_back();
+                return true;
             }
         }
-        return true;
+        return changed;
     }
     return false;
 }

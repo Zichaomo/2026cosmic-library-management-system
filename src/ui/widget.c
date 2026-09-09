@@ -142,6 +142,10 @@ void widget_set_hover(Widget *w, bool hover) {
     if (w) w->hover = hover;
 }
 
+bool widget_get_hover(const Widget *w) {
+    return w ? w->hover : false;
+}
+
 void widget_set_selected(Widget *w, bool selected) {
     if (w) w->selected = selected;
 }

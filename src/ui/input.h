@@ -30,4 +30,7 @@ typedef struct {
    返回 false 表示读取失败/超时。 */
 bool input_read(InputEvent *ev, unsigned int timeout_ms);
 
+/* 非阻塞读取：队列无事件立即返回 false（用于抽干队列、合并重绘） */
+bool input_poll(InputEvent *ev);
+
 #endif /* LMS_UI_INPUT_H */

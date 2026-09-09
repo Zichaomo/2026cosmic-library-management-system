@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <wchar.h>
 
 #include "ui/admin_screen.h"
@@ -130,6 +131,12 @@ static void draw_current_page(const App *app) {
                 app->list_selection, app->status_message
             );
             break;
+        case APP_PAGE_READER_RESERVATIONS:
+            circulation_screen_draw_reader_reservations(
+                &app->console, &app->library, current_reader_id(app),
+                app->list_selection, app->status_message
+            );
+            break;
         case APP_PAGE_READER_FINES:
             circulation_screen_draw_reader_fines(
                 &app->console, &app->library, current_reader_id(app),
@@ -162,6 +169,12 @@ static void draw_current_page(const App *app) {
         case APP_PAGE_ADMIN_BORROW:
             admin_screen_draw_borrow_form(
                 &app->console, &app->admin_borrow_form
+            );
+            break;
+        case APP_PAGE_ADMIN_RESERVATIONS:
+            circulation_screen_draw_admin_reservations(
+                &app->console, &app->readers, &app->library,
+                app->list_selection, app->status_message
             );
             break;
         case APP_PAGE_ADMIN_FINES:
@@ -409,7 +422,9 @@ static void activate_admin_item(App *app) {
             app->page = APP_PAGE_ADMIN_LOANS;
             break;
         case ADMIN_MENU_RESERVATIONS:
-            set_status(app, L"已选择预约管理，功能尚未实现。");
+            app->list_selection = 0;
+            app->status_message[0] = L'\0';
+            app->page = APP_PAGE_ADMIN_RESERVATIONS;
             break;
         case ADMIN_MENU_FINES:
             app->list_selection = 0;
@@ -441,7 +456,9 @@ static void activate_reader_item(App *app) {
             app->page = APP_PAGE_READER_LOANS;
             break;
         case READER_MENU_MY_RESERVATIONS:
-            set_status(app, L"已选择我的预约，功能尚未实现。");
+            app->list_selection = 0;
+            app->status_message[0] = L'\0';
+            app->page = APP_PAGE_READER_RESERVATIONS;
             break;
         case READER_MENU_MY_FINES:
             app->list_selection = 0;
@@ -510,6 +527,8 @@ static int circulation_item_count(const App *app) {
             return (int)app->library.loan_count;
         case APP_PAGE_ADMIN_FINES:
             return (int)app->library.fine_count;
+        case APP_PAGE_ADMIN_RESERVATIONS:
+            return (int)app->library.reservation_count;
         case APP_PAGE_READER_LOANS:
             for (size_t i = 0; i < app->library.loan_count; ++i) {
                 if (app->library.loans[i].reader_id == reader_id) {
@@ -520,6 +539,13 @@ static int circulation_item_count(const App *app) {
         case APP_PAGE_READER_FINES:
             for (size_t i = 0; i < app->library.fine_count; ++i) {
                 if (app->library.fines[i].reader_id == reader_id) {
+                    ++count;
+                }
+            }
+            return count;
+        case APP_PAGE_READER_RESERVATIONS:
+            for (size_t i = 0; i < app->library.reservation_count; ++i) {
+                if (app->library.reservations[i].reader_id == reader_id) {
                     ++count;
                 }
             }
@@ -552,6 +578,20 @@ static const Fine *selected_reader_fine(const App *app) {
         }
         if (item++ == app->list_selection) {
             return &app->library.fines[i];
+        }
+    }
+    return NULL;
+}
+
+static const Reservation *selected_reader_reservation(const App *app) {
+    const int reader_id = current_reader_id(app);
+    int item = 0;
+    for (size_t i = 0; i < app->library.reservation_count; ++i) {
+        if (app->library.reservations[i].reader_id != reader_id) {
+            continue;
+        }
+        if (item++ == app->list_selection) {
+            return &app->library.reservations[i];
         }
     }
     return NULL;
@@ -603,6 +643,24 @@ static void show_library_result(App *app, LibraryResult result) {
             break;
         case LIBRARY_RESULT_DUPLICATE_ISBN:
             set_status(app, L"操作失败：ISBN 已存在。");
+            break;
+        case LIBRARY_RESULT_BOOK_STILL_AVAILABLE:
+            set_status(app, L"该书目前仍有可借副本，请直接借书。");
+            break;
+        case LIBRARY_RESULT_RESERVATION_DUPLICATE:
+            set_status(app, L"操作失败：你已经预约了这本书。");
+            break;
+        case LIBRARY_RESULT_RESERVATION_NOT_FOUND:
+            set_status(app, L"操作失败：预约记录不存在。");
+            break;
+        case LIBRARY_RESULT_RESERVATION_NOT_READY:
+            set_status(app, L"操作失败：该预约尚未进入可借状态。");
+            break;
+        case LIBRARY_RESULT_RESERVATION_CLOSED:
+            set_status(app, L"操作失败：该预约已经结束。");
+            break;
+        case LIBRARY_RESULT_RESERVATION_PENDING:
+            set_status(app, L"操作失败：该书有人预约排队，不能续借。");
             break;
         case LIBRARY_RESULT_STORAGE_ERROR:
             set_status(app, L"操作失败：数据保存失败。");
@@ -682,6 +740,33 @@ static void activate_circulation_item(App *app, bool renew) {
         return;
     }
 
+    if (app->page == APP_PAGE_READER_RESERVATIONS) {
+        const Reservation *selected = selected_reader_reservation(app);
+        if (selected == NULL) {
+            set_status(app, L"当前没有预约记录。");
+            return;
+        }
+        if (selected->status != RESERVATION_STATUS_READY) {
+            show_library_result(app, LIBRARY_RESULT_RESERVATION_NOT_READY);
+            return;
+        }
+        int loan_id = 0;
+        result = library_borrow_book(
+            &app->library, &app->readers, selected->reader_id,
+            selected->book_id, &loan_id
+        );
+        if (result == LIBRARY_RESULT_SUCCESS) {
+            wchar_t message[192];
+            swprintf(
+                message, 192, L"预约图书领取成功，借阅单号：%d。", loan_id
+            );
+            set_status(app, message);
+        } else {
+            show_library_result(app, result);
+        }
+        return;
+    }
+
     if (app->page == APP_PAGE_ADMIN_LOANS) {
         if (app->list_selection < 0 ||
             (size_t)app->list_selection >= app->library.loan_count) {
@@ -724,12 +809,98 @@ static void activate_circulation_item(App *app, bool renew) {
         } else {
             show_library_result(app, result);
         }
+        return;
+    }
+
+    if (app->page == APP_PAGE_ADMIN_RESERVATIONS) {
+        if (app->list_selection < 0 ||
+            (size_t)app->list_selection >= app->library.reservation_count) {
+            set_status(app, L"当前没有预约记录。");
+            return;
+        }
+        const Reservation *selected =
+            &app->library.reservations[app->list_selection];
+        if (selected->status != RESERVATION_STATUS_READY) {
+            show_library_result(app, LIBRARY_RESULT_RESERVATION_NOT_READY);
+            return;
+        }
+        int loan_id = 0;
+        result = library_borrow_book(
+            &app->library, &app->readers, selected->reader_id,
+            selected->book_id, &loan_id
+        );
+        if (result == LIBRARY_RESULT_SUCCESS) {
+            wchar_t message[192];
+            swprintf(
+                message, 192, L"管理员代办预约取书成功，借阅单号：%d。",
+                loan_id
+            );
+            set_status(app, message);
+        } else {
+            show_library_result(app, result);
+        }
+    }
+}
+
+static void create_selected_book_reservation(App *app) {
+    if (app->list_selection < 0 ||
+        (size_t)app->list_selection >= app->library.book_count) {
+        set_status(app, L"当前没有可选择的图书。");
+        return;
+    }
+    int reservation_id = 0;
+    const LibraryResult result = library_create_reservation(
+        &app->library, &app->readers, current_reader_id(app),
+        app->library.books[app->list_selection].id, &reservation_id
+    );
+    if (result == LIBRARY_RESULT_SUCCESS) {
+        wchar_t message[192];
+        swprintf(
+            message, 192, L"预约成功，预约单号：%d，已加入等待队列。",
+            reservation_id
+        );
+        set_status(app, message);
+    } else {
+        show_library_result(app, result);
+    }
+}
+
+static void close_selected_reservation(
+    App *app,
+    bool expire_for_demo
+) {
+    const Reservation *selected = app->page == APP_PAGE_READER_RESERVATIONS
+        ? selected_reader_reservation(app)
+        : ((app->list_selection >= 0 &&
+            (size_t)app->list_selection < app->library.reservation_count)
+            ? &app->library.reservations[app->list_selection] : NULL);
+    if (selected == NULL) {
+        set_status(app, L"当前没有预约记录。");
+        return;
+    }
+    const int reservation_id = selected->id;
+    const LibraryResult result = expire_for_demo
+        ? library_expire_reservation_for_demo(
+            &app->library, reservation_id, time(NULL)
+        )
+        : library_cancel_reservation(&app->library, reservation_id);
+    if (result == LIBRARY_RESULT_SUCCESS) {
+        set_status(
+            app, expire_for_demo
+                ? L"该可借预约已模拟过期，名额已自动顺延。"
+                : L"预约已取消，保留副本已自动释放或顺延。"
+        );
+    } else {
+        show_library_result(app, result);
     }
 }
 
 static void handle_circulation_event(App *app, const UiEvent *event) {
     if (event->type != UI_EVENT_KEY) {
         return;
+    }
+    if (!library_refresh_reservations_at(&app->library, time(NULL))) {
+        set_status(app, L"预约状态刷新失败，请检查数据文件。");
     }
     const int item_count = circulation_item_count(app);
     switch (event->key) {
@@ -758,7 +929,17 @@ static void handle_circulation_event(App *app, const UiEvent *event) {
             activate_circulation_item(app, false);
             break;
         case UI_KEY_CHARACTER:
-            if (app->page == APP_PAGE_READER_LOANS &&
+            if (app->page == APP_PAGE_BOOK_CATALOG &&
+                (event->character == L'r' || event->character == L'R')) {
+                create_selected_book_reservation(app);
+            } else if ((app->page == APP_PAGE_READER_RESERVATIONS ||
+                        app->page == APP_PAGE_ADMIN_RESERVATIONS) &&
+                (event->character == L'c' || event->character == L'C')) {
+                close_selected_reservation(app, false);
+            } else if (app->page == APP_PAGE_ADMIN_RESERVATIONS &&
+                (event->character == L'x' || event->character == L'X')) {
+                close_selected_reservation(app, true);
+            } else if (app->page == APP_PAGE_READER_LOANS &&
                 (event->character == L'r' || event->character == L'R')) {
                 activate_circulation_item(app, true);
             } else if (app->page == APP_PAGE_ADMIN_LOANS &&
@@ -792,7 +973,8 @@ static void handle_circulation_event(App *app, const UiEvent *event) {
             app->list_selection = 0;
             app->status_message[0] = L'\0';
             app->page = (app->page == APP_PAGE_ADMIN_LOANS ||
-                         app->page == APP_PAGE_ADMIN_FINES)
+                         app->page == APP_PAGE_ADMIN_FINES ||
+                         app->page == APP_PAGE_ADMIN_RESERVATIONS)
                 ? APP_PAGE_ADMIN_HOME : APP_PAGE_READER_HOME;
             break;
         default:
@@ -1095,8 +1277,10 @@ int app_run(App *app) {
                 break;
             case APP_PAGE_BOOK_CATALOG:
             case APP_PAGE_READER_LOANS:
+            case APP_PAGE_READER_RESERVATIONS:
             case APP_PAGE_READER_FINES:
             case APP_PAGE_ADMIN_LOANS:
+            case APP_PAGE_ADMIN_RESERVATIONS:
             case APP_PAGE_ADMIN_FINES:
                 handle_circulation_event(app, &event);
                 break;

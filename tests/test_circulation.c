@@ -41,6 +41,8 @@ static void clean_test_data(void) {
     DeleteFileW(L"tests\\tmp_circulation\\loans.csv");
     DeleteFileW(L"tests\\tmp_circulation\\fines.csv.tmp");
     DeleteFileW(L"tests\\tmp_circulation\\fines.csv");
+    DeleteFileW(L"tests\\tmp_circulation\\reservations.csv.tmp");
+    DeleteFileW(L"tests\\tmp_circulation\\reservations.csv");
     RemoveDirectoryW(L"tests\\tmp_circulation");
 }
 
@@ -215,14 +217,147 @@ int main(void) {
         "admin demo helper marks an active loan overdue"
     );
 
+    int queue_book_id = 0;
+    check(
+        library_add_book(
+            &library, L"9787300000002", L"预约测试图书",
+            L"测试作者", 1, &queue_book_id
+        ) == LIBRARY_RESULT_SUCCESS,
+        "create one-copy book for reservation queue"
+    );
+    const ReaderRegistrationRequest reader_two_request = {
+        L"reserve-2", L"预约读者二", L"reader123", L"reader123", L"10002"
+    };
+    const ReaderRegistrationRequest reader_three_request = {
+        L"reserve-3", L"预约读者三", L"reader123", L"reader123", L"10003"
+    };
+    const ReaderRegistrationRequest reader_four_request = {
+        L"reserve-4", L"预约读者四", L"reader123", L"reader123", L"10004"
+    };
+    check(
+        auth_register_reader(&readers, &reader_two_request) ==
+            REGISTER_RESULT_SUCCESS &&
+        auth_register_reader(&readers, &reader_three_request) ==
+            REGISTER_RESULT_SUCCESS &&
+        auth_register_reader(&readers, &reader_four_request) ==
+            REGISTER_RESULT_SUCCESS,
+        "register readers for reservation queue"
+    );
+    const ReaderAccount *reader_two = reader_repository_find_by_number(
+        &readers, L"reserve-2"
+    );
+    const ReaderAccount *reader_three = reader_repository_find_by_number(
+        &readers, L"reserve-3"
+    );
+    const ReaderAccount *reader_four = reader_repository_find_by_number(
+        &readers, L"reserve-4"
+    );
+    const int reader_two_id = reader_two != NULL ? reader_two->id : 0;
+    const int reader_three_id = reader_three != NULL ? reader_three->id : 0;
+    const int reader_four_id = reader_four != NULL ? reader_four->id : 0;
+    int queue_loan_id = 0;
+    check(
+        library_borrow_book_at(
+            &library, &readers, reader_id, queue_book_id,
+            local_date(2026, 3, 1), &queue_loan_id
+        ) == LIBRARY_RESULT_SUCCESS &&
+        library_find_book(&library, queue_book_id)->available_copies == 0,
+        "borrow final copy before reservations"
+    );
+    int reservation_two_id = 0;
+    int reservation_three_id = 0;
+    int reservation_four_id = 0;
+    check(
+        library_create_reservation_at(
+            &library, &readers, reader_two_id, queue_book_id,
+            local_date(2026, 3, 2), &reservation_two_id
+        ) == LIBRARY_RESULT_SUCCESS &&
+        library_create_reservation_at(
+            &library, &readers, reader_three_id, queue_book_id,
+            local_date(2026, 3, 2), &reservation_three_id
+        ) == LIBRARY_RESULT_SUCCESS &&
+        library_create_reservation_at(
+            &library, &readers, reader_four_id, queue_book_id,
+            local_date(2026, 3, 2), &reservation_four_id
+        ) == LIBRARY_RESULT_SUCCESS,
+        "readers join reservation queue in order"
+    );
+    check(
+        library_create_reservation_at(
+            &library, &readers, reader_two_id, queue_book_id,
+            local_date(2026, 3, 2), NULL
+        ) == LIBRARY_RESULT_RESERVATION_DUPLICATE,
+        "reject duplicate open reservation"
+    );
+    check(
+        library_cancel_reservation_at(
+            &library, reservation_four_id, local_date(2026, 3, 2)
+        ) == LIBRARY_RESULT_SUCCESS &&
+        library_find_reservation(&library, reservation_four_id)->status ==
+            RESERVATION_STATUS_CANCELLED,
+        "reader cancels waiting reservation"
+    );
+    check(
+        library_renew_loan_at(
+            &library, queue_loan_id, local_date(2026, 3, 2)
+        ) == LIBRARY_RESULT_RESERVATION_PENDING,
+        "reservation queue prevents renewal"
+    );
+    check(
+        library_return_loan_at(
+            &library, queue_loan_id, local_date(2026, 3, 3), NULL
+        ) == LIBRARY_RESULT_SUCCESS &&
+        library_find_reservation(&library, reservation_two_id)->status ==
+            RESERVATION_STATUS_READY &&
+        strcmp(
+            library_find_reservation(&library, reservation_two_id)->expire_date,
+            "2026-03-05"
+        ) == 0 &&
+        library_find_book(&library, queue_book_id)->available_copies == 0,
+        "return activates first reservation and holds copy for two days"
+    );
+    int reserved_loan_id = 0;
+    check(
+        library_borrow_book_at(
+            &library, &readers, reader_two_id, queue_book_id,
+            local_date(2026, 3, 3), &reserved_loan_id
+        ) == LIBRARY_RESULT_SUCCESS &&
+        library_find_reservation(&library, reservation_two_id)->status ==
+            RESERVATION_STATUS_FULFILLED,
+        "ready reader picks up reserved copy"
+    );
+    check(
+        library_return_loan_at(
+            &library, reserved_loan_id, local_date(2026, 3, 4), NULL
+        ) == LIBRARY_RESULT_SUCCESS &&
+        library_find_reservation(&library, reservation_three_id)->status ==
+            RESERVATION_STATUS_READY &&
+        library_refresh_reservations_at(
+            &library, local_date(2026, 3, 7)
+        ) &&
+        library_find_reservation(&library, reservation_three_id)->status ==
+            RESERVATION_STATUS_EXPIRED &&
+        library_find_book(&library, queue_book_id)->available_copies == 1,
+        "expired hold advances queue and releases copy"
+    );
+    check(
+        library_create_reservation_at(
+            &library, &readers, reader_four_id, queue_book_id,
+            local_date(2026, 3, 7), NULL
+        ) == LIBRARY_RESULT_BOOK_STILL_AVAILABLE,
+        "reject reservation while a copy is available"
+    );
+
     library_repository_dispose(&library);
     check(
         library_repository_init(&library, L"tests\\tmp_circulation") &&
-            library.book_count == 6 && library.loan_count == 4 &&
-            library.fine_count == 2 &&
+            library.book_count == 7 && library.loan_count == 6 &&
+            library.fine_count == 2 && library.reservation_count == 3 &&
             library.fines[0].status == FINE_STATUS_PAID &&
-            library.fines[1].status == FINE_STATUS_PAID,
-        "reload books loans and fines after restart"
+            library.fines[1].status == FINE_STATUS_PAID &&
+            library.reservations[0].status == RESERVATION_STATUS_FULFILLED &&
+            library.reservations[1].status == RESERVATION_STATUS_EXPIRED,
+        "reload books loans fines and reservations after restart"
     );
 
     library_repository_dispose(&library);

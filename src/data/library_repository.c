@@ -14,6 +14,7 @@ enum {
     BOOK_FIELD_COUNT = 8,
     LOAN_FIELD_COUNT = 8,
     FINE_FIELD_COUNT = 7,
+    RESERVATION_FIELD_COUNT = 6,
     UTF8_VALUE_CAPACITY = 512
 };
 
@@ -142,6 +143,16 @@ static int next_fine_id(const LibraryRepository *repository) {
     return next;
 }
 
+static int next_reservation_id(const LibraryRepository *repository) {
+    int next = 1;
+    for (size_t i = 0; i < repository->reservation_count; ++i) {
+        if (repository->reservations[i].id >= next) {
+            next = repository->reservations[i].id + 1;
+        }
+    }
+    return next;
+}
+
 static Book *find_book_mutable(LibraryRepository *repository, int id) {
     for (size_t i = 0; i < repository->book_count; ++i) {
         if (repository->books[i].id == id) {
@@ -167,6 +178,60 @@ static Fine *find_fine_mutable(LibraryRepository *repository, int id) {
         }
     }
     return NULL;
+}
+
+static Reservation *find_reservation_mutable(
+    LibraryRepository *repository,
+    int id
+) {
+    for (size_t i = 0; i < repository->reservation_count; ++i) {
+        if (repository->reservations[i].id == id) {
+            return &repository->reservations[i];
+        }
+    }
+    return NULL;
+}
+
+static bool reservation_is_open(const Reservation *reservation) {
+    return reservation->status == RESERVATION_STATUS_WAITING ||
+           reservation->status == RESERVATION_STATUS_READY;
+}
+
+static bool activate_next_waiting(
+    LibraryRepository *repository,
+    int book_id,
+    time_t now,
+    size_t *activated_index
+) {
+    Book *book = find_book_mutable(repository, book_id);
+    if (activated_index != NULL) {
+        *activated_index = (size_t)-1;
+    }
+    if (book == NULL || book->available_copies <= 0) {
+        return book != NULL;
+    }
+    for (size_t i = 0; i < repository->reservation_count; ++i) {
+        Reservation *reservation = &repository->reservations[i];
+        if (reservation->book_id != book_id ||
+            reservation->status != RESERVATION_STATUS_WAITING) {
+            continue;
+        }
+        char today[LIBRARY_DATE_CAPACITY];
+        if (!format_date(now, today) || !add_days_to_date(
+                today,
+                LIBRARY_RESERVATION_HOLD_DAYS,
+                reservation->expire_date
+            )) {
+            return false;
+        }
+        reservation->status = RESERVATION_STATUS_READY;
+        --book->available_copies;
+        if (activated_index != NULL) {
+            *activated_index = i;
+        }
+        return true;
+    }
+    return true;
 }
 
 static bool reader_exists_and_normal(
@@ -340,9 +405,51 @@ static bool save_fines(const LibraryRepository *repository) {
     return finish_atomic_file(file, success, temporary_path, path);
 }
 
+static const char *reservation_status_text(ReservationStatus status) {
+    switch (status) {
+        case RESERVATION_STATUS_WAITING: return "waiting";
+        case RESERVATION_STATUS_READY: return "ready";
+        case RESERVATION_STATUS_FULFILLED: return "fulfilled";
+        case RESERVATION_STATUS_EXPIRED: return "expired";
+        case RESERVATION_STATUS_CANCELLED: return "cancelled";
+    }
+    return "cancelled";
+}
+
+static bool save_reservations(const LibraryRepository *repository) {
+    wchar_t path[MAX_PATH];
+    wchar_t temporary_path[MAX_PATH];
+    FILE *file = NULL;
+    if (!build_path(repository, L"reservations.csv", path) ||
+        !open_atomic_file(path, temporary_path, &file)) {
+        return false;
+    }
+    bool success = fputs(
+        "id,book_id,reader_id,reserve_date,expire_date,status\r\n", file
+    ) >= 0;
+    for (size_t i = 0; success && i < repository->reservation_count; ++i) {
+        const Reservation *reservation = &repository->reservations[i];
+        char id[24];
+        char book_id[24];
+        char reader_id[24];
+        snprintf(id, sizeof(id), "%d", reservation->id);
+        snprintf(book_id, sizeof(book_id), "%d", reservation->book_id);
+        snprintf(reader_id, sizeof(reader_id), "%d", reservation->reader_id);
+        success = write_field(file, id, false) &&
+            write_field(file, book_id, false) &&
+            write_field(file, reader_id, false) &&
+            write_field(file, reservation->reserve_date, false) &&
+            write_field(file, reservation->expire_date, false) &&
+            write_field(file, reservation_status_text(
+                reservation->status
+            ), true);
+    }
+    return finish_atomic_file(file, success, temporary_path, path);
+}
+
 static bool save_all(const LibraryRepository *repository) {
     return save_books(repository) && save_loans(repository) &&
-           save_fines(repository);
+           save_fines(repository) && save_reservations(repository);
 }
 
 static bool load_books(LibraryRepository *repository) {
@@ -480,6 +587,79 @@ static bool load_fines(LibraryRepository *repository) {
     return success;
 }
 
+static bool parse_reservation_status(
+    const char *text,
+    ReservationStatus *status
+) {
+    if (strcmp(text, "waiting") == 0) {
+        *status = RESERVATION_STATUS_WAITING;
+    } else if (strcmp(text, "ready") == 0) {
+        *status = RESERVATION_STATUS_READY;
+    } else if (strcmp(text, "fulfilled") == 0) {
+        *status = RESERVATION_STATUS_FULFILLED;
+    } else if (strcmp(text, "expired") == 0) {
+        *status = RESERVATION_STATUS_EXPIRED;
+    } else if (strcmp(text, "cancelled") == 0) {
+        *status = RESERVATION_STATUS_CANCELLED;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+static bool load_reservations(LibraryRepository *repository) {
+    wchar_t path[MAX_PATH];
+    if (!build_path(repository, L"reservations.csv", path)) {
+        return false;
+    }
+    FILE *file = _wfopen(path, L"rb");
+    if (file == NULL) {
+        return errno == ENOENT;
+    }
+    char line[4096];
+    if (fgets(line, sizeof(line), file) == NULL) {
+        fclose(file);
+        return true;
+    }
+    while (fgets(line, sizeof(line), file) != NULL) {
+        char fields[RESERVATION_FIELD_COUNT][CSV_FIELD_CAPACITY];
+        size_t count = 0;
+        Reservation reservation;
+        memset(&reservation, 0, sizeof(reservation));
+        if (!csv_parse_line(
+                line, fields, RESERVATION_FIELD_COUNT, &count
+            ) || count != RESERVATION_FIELD_COUNT ||
+            !parse_positive_int(fields[0], &reservation.id) ||
+            !parse_positive_int(fields[1], &reservation.book_id) ||
+            !parse_positive_int(fields[2], &reservation.reader_id) ||
+            !parse_reservation_status(fields[5], &reservation.status) ||
+            !ensure_array_capacity(
+                (void **)&repository->reservations,
+                &repository->reservation_capacity,
+                repository->reservation_count,
+                sizeof(*repository->reservations)
+            )) {
+            fclose(file);
+            return false;
+        }
+        strncpy(
+            reservation.reserve_date,
+            fields[3],
+            LIBRARY_DATE_CAPACITY - 1
+        );
+        strncpy(
+            reservation.expire_date,
+            fields[4],
+            LIBRARY_DATE_CAPACITY - 1
+        );
+        repository->reservations[repository->reservation_count++] =
+            reservation;
+    }
+    const bool success = !ferror(file);
+    fclose(file);
+    return success;
+}
+
 static bool add_seed_book(
     LibraryRepository *repository,
     const wchar_t *isbn,
@@ -539,7 +719,7 @@ bool library_repository_init(
     }
     wcsncpy(repository->data_directory, data_directory, MAX_PATH - 1);
     if (!load_books(repository) || !load_loans(repository) ||
-        !load_fines(repository)) {
+        !load_fines(repository) || !load_reservations(repository)) {
         library_repository_dispose(repository);
         return false;
     }
@@ -548,7 +728,12 @@ bool library_repository_init(
             library_repository_dispose(repository);
             return false;
         }
-    } else if (!save_loans(repository) || !save_fines(repository)) {
+    } else if (!save_loans(repository) || !save_fines(repository) ||
+               !save_reservations(repository)) {
+        library_repository_dispose(repository);
+        return false;
+    }
+    if (!library_refresh_reservations_at(repository, time(NULL))) {
         library_repository_dispose(repository);
         return false;
     }
@@ -562,6 +747,7 @@ void library_repository_dispose(LibraryRepository *repository) {
     free(repository->books);
     free(repository->loans);
     free(repository->fines);
+    free(repository->reservations);
     memset(repository, 0, sizeof(*repository));
 }
 
@@ -596,6 +782,21 @@ const Fine *library_find_fine(const LibraryRepository *repository, int id) {
     for (size_t i = 0; i < repository->fine_count; ++i) {
         if (repository->fines[i].id == id) {
             return &repository->fines[i];
+        }
+    }
+    return NULL;
+}
+
+const Reservation *library_find_reservation(
+    const LibraryRepository *repository,
+    int id
+) {
+    if (repository == NULL) {
+        return NULL;
+    }
+    for (size_t i = 0; i < repository->reservation_count; ++i) {
+        if (repository->reservations[i].id == id) {
+            return &repository->reservations[i];
         }
     }
     return NULL;
@@ -663,6 +864,9 @@ LibraryResult library_borrow_book_at(
     if (repository == NULL) {
         return LIBRARY_RESULT_STORAGE_ERROR;
     }
+    if (!library_refresh_reservations_at(repository, now)) {
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
     bool reader_normal = false;
     if (!reader_exists_and_normal(readers, reader_id, &reader_normal)) {
         return LIBRARY_RESULT_READER_NOT_FOUND;
@@ -676,7 +880,18 @@ LibraryResult library_borrow_book_at(
     if (book == NULL) {
         return LIBRARY_RESULT_BOOK_NOT_FOUND;
     }
-    if (book->status != BOOK_STATUS_AVAILABLE || book->available_copies <= 0) {
+    Reservation *ready_reservation = NULL;
+    for (size_t i = 0; i < repository->reservation_count; ++i) {
+        Reservation *reservation = &repository->reservations[i];
+        if (reservation->reader_id == reader_id &&
+            reservation->book_id == book_id &&
+            reservation->status == RESERVATION_STATUS_READY) {
+            ready_reservation = reservation;
+            break;
+        }
+    }
+    if (book->status != BOOK_STATUS_AVAILABLE ||
+        (book->available_copies <= 0 && ready_reservation == NULL)) {
         return LIBRARY_RESULT_BOOK_UNAVAILABLE;
     }
     if (library_reader_active_loan_count(repository, reader_id) >=
@@ -706,9 +921,17 @@ LibraryResult library_borrow_book_at(
         return LIBRARY_RESULT_STORAGE_ERROR;
     }
     repository->loans[repository->loan_count++] = loan;
-    --book->available_copies;
+    if (ready_reservation != NULL) {
+        ready_reservation->status = RESERVATION_STATUS_FULFILLED;
+    } else {
+        --book->available_copies;
+    }
     if (!save_all(repository)) {
-        ++book->available_copies;
+        if (ready_reservation != NULL) {
+            ready_reservation->status = RESERVATION_STATUS_READY;
+        } else {
+            ++book->available_copies;
+        }
         --repository->loan_count;
         return LIBRARY_RESULT_STORAGE_ERROR;
     }
@@ -756,6 +979,14 @@ LibraryResult library_return_loan_at(
     if (book->available_copies < book->total_copies) {
         ++book->available_copies;
     }
+    size_t activated_reservation = (size_t)-1;
+    if (!activate_next_waiting(
+            repository, book->id, now, &activated_reservation
+        )) {
+        *loan = old_loan;
+        book->available_copies = old_available;
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
     if (overdue_days > 0) {
         Fine fine;
         memset(&fine, 0, sizeof(fine));
@@ -774,6 +1005,12 @@ LibraryResult library_return_loan_at(
     if (!save_all(repository)) {
         if (overdue_days > 0) {
             --repository->fine_count;
+        }
+        if (activated_reservation != (size_t)-1) {
+            Reservation *reservation =
+                &repository->reservations[activated_reservation];
+            reservation->status = RESERVATION_STATUS_WAITING;
+            reservation->expire_date[0] = '\0';
         }
         *loan = old_loan;
         book->available_copies = old_available;
@@ -805,6 +1042,12 @@ LibraryResult library_renew_loan_at(
     }
     if (loan->renew_count >= 1) {
         return LIBRARY_RESULT_RENEW_LIMIT;
+    }
+    for (size_t i = 0; i < repository->reservation_count; ++i) {
+        if (repository->reservations[i].book_id == loan->book_id &&
+            reservation_is_open(&repository->reservations[i])) {
+            return LIBRARY_RESULT_RESERVATION_PENDING;
+        }
     }
     const Loan old_loan = *loan;
     if (!add_days_to_date(
@@ -969,7 +1212,16 @@ LibraryResult library_add_book_copy(
     const Book old_book = *book;
     ++book->total_copies;
     ++book->available_copies;
-    if (!save_books(repository)) {
+    size_t activated_reservation = (size_t)-1;
+    if (!activate_next_waiting(
+            repository, book_id, time(NULL), &activated_reservation
+        ) || !save_all(repository)) {
+        if (activated_reservation != (size_t)-1) {
+            Reservation *reservation =
+                &repository->reservations[activated_reservation];
+            reservation->status = RESERVATION_STATUS_WAITING;
+            reservation->expire_date[0] = '\0';
+        }
         *book = old_book;
         return LIBRARY_RESULT_STORAGE_ERROR;
     }
@@ -995,4 +1247,207 @@ LibraryResult library_toggle_book_status(
         return LIBRARY_RESULT_STORAGE_ERROR;
     }
     return LIBRARY_RESULT_SUCCESS;
+}
+
+bool library_refresh_reservations_at(
+    LibraryRepository *repository,
+    time_t now
+) {
+    if (repository == NULL) {
+        return false;
+    }
+    bool changed = false;
+    for (size_t i = 0; i < repository->reservation_count; ++i) {
+        Reservation *reservation = &repository->reservations[i];
+        if (reservation->status != RESERVATION_STATUS_READY) {
+            continue;
+        }
+        const time_t expires = parse_end_of_date(reservation->expire_date);
+        if (expires == (time_t)-1 || difftime(now, expires) <= 0.0) {
+            continue;
+        }
+        Book *book = find_book_mutable(repository, reservation->book_id);
+        if (book == NULL) {
+            return false;
+        }
+        reservation->status = RESERVATION_STATUS_EXPIRED;
+        if (book->available_copies < book->total_copies) {
+            ++book->available_copies;
+        }
+        if (!activate_next_waiting(repository, book->id, now, NULL)) {
+            return false;
+        }
+        changed = true;
+    }
+    return !changed || save_all(repository);
+}
+
+LibraryResult library_create_reservation_at(
+    LibraryRepository *repository,
+    const ReaderRepository *readers,
+    int reader_id,
+    int book_id,
+    time_t now,
+    int *reservation_id
+) {
+    if (repository == NULL ||
+        !library_refresh_reservations_at(repository, now)) {
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
+    bool reader_normal = false;
+    if (!reader_exists_and_normal(readers, reader_id, &reader_normal)) {
+        return LIBRARY_RESULT_READER_NOT_FOUND;
+    }
+    if (!reader_normal) {
+        return LIBRARY_RESULT_READER_BLOCKED;
+    }
+    const Book *book = library_find_book(repository, book_id);
+    if (book == NULL) {
+        return LIBRARY_RESULT_BOOK_NOT_FOUND;
+    }
+    if (book->status != BOOK_STATUS_AVAILABLE) {
+        return LIBRARY_RESULT_BOOK_UNAVAILABLE;
+    }
+    if (book->available_copies > 0) {
+        return LIBRARY_RESULT_BOOK_STILL_AVAILABLE;
+    }
+    for (size_t i = 0; i < repository->loan_count; ++i) {
+        if (repository->loans[i].reader_id == reader_id &&
+            repository->loans[i].book_id == book_id &&
+            repository->loans[i].status == LOAN_STATUS_ACTIVE) {
+            return LIBRARY_RESULT_ALREADY_BORROWED;
+        }
+    }
+    for (size_t i = 0; i < repository->reservation_count; ++i) {
+        const Reservation *reservation = &repository->reservations[i];
+        if (reservation->reader_id == reader_id &&
+            reservation->book_id == book_id &&
+            reservation_is_open(reservation)) {
+            return LIBRARY_RESULT_RESERVATION_DUPLICATE;
+        }
+    }
+    if (!ensure_array_capacity(
+            (void **)&repository->reservations,
+            &repository->reservation_capacity,
+            repository->reservation_count,
+            sizeof(*repository->reservations)
+        )) {
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
+    Reservation reservation;
+    memset(&reservation, 0, sizeof(reservation));
+    reservation.id = next_reservation_id(repository);
+    reservation.book_id = book_id;
+    reservation.reader_id = reader_id;
+    reservation.status = RESERVATION_STATUS_WAITING;
+    if (!format_date(now, reservation.reserve_date)) {
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
+    repository->reservations[repository->reservation_count++] = reservation;
+    if (!save_reservations(repository)) {
+        --repository->reservation_count;
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
+    if (reservation_id != NULL) {
+        *reservation_id = reservation.id;
+    }
+    return LIBRARY_RESULT_SUCCESS;
+}
+
+static LibraryResult close_reservation(
+    LibraryRepository *repository,
+    int reservation_id,
+    ReservationStatus closed_status,
+    time_t now
+) {
+    if (repository == NULL ||
+        !library_refresh_reservations_at(repository, now)) {
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
+    Reservation *reservation = find_reservation_mutable(
+        repository, reservation_id
+    );
+    if (reservation == NULL) {
+        return LIBRARY_RESULT_RESERVATION_NOT_FOUND;
+    }
+    if (!reservation_is_open(reservation)) {
+        return LIBRARY_RESULT_RESERVATION_CLOSED;
+    }
+    if (closed_status == RESERVATION_STATUS_EXPIRED &&
+        reservation->status != RESERVATION_STATUS_READY) {
+        return LIBRARY_RESULT_RESERVATION_NOT_READY;
+    }
+    Book *book = find_book_mutable(repository, reservation->book_id);
+    if (book == NULL) {
+        return LIBRARY_RESULT_BOOK_NOT_FOUND;
+    }
+    const Reservation old_reservation = *reservation;
+    const int old_available = book->available_copies;
+    const bool released_copy = reservation->status == RESERVATION_STATUS_READY;
+    reservation->status = closed_status;
+    if (released_copy && book->available_copies < book->total_copies) {
+        ++book->available_copies;
+    }
+    size_t activated_index = (size_t)-1;
+    if (!activate_next_waiting(
+            repository, book->id, now, &activated_index
+        ) || !save_all(repository)) {
+        if (activated_index != (size_t)-1) {
+            Reservation *activated = &repository->reservations[activated_index];
+            activated->status = RESERVATION_STATUS_WAITING;
+            activated->expire_date[0] = '\0';
+        }
+        *reservation = old_reservation;
+        book->available_copies = old_available;
+        return LIBRARY_RESULT_STORAGE_ERROR;
+    }
+    return LIBRARY_RESULT_SUCCESS;
+}
+
+LibraryResult library_cancel_reservation_at(
+    LibraryRepository *repository,
+    int reservation_id,
+    time_t now
+) {
+    return close_reservation(
+        repository,
+        reservation_id,
+        RESERVATION_STATUS_CANCELLED,
+        now
+    );
+}
+
+LibraryResult library_expire_reservation_for_demo(
+    LibraryRepository *repository,
+    int reservation_id,
+    time_t now
+) {
+    return close_reservation(
+        repository,
+        reservation_id,
+        RESERVATION_STATUS_EXPIRED,
+        now
+    );
+}
+
+LibraryResult library_create_reservation(
+    LibraryRepository *repository,
+    const ReaderRepository *readers,
+    int reader_id,
+    int book_id,
+    int *reservation_id
+) {
+    return library_create_reservation_at(
+        repository, readers, reader_id, book_id,
+        time(NULL), reservation_id
+    );
+}
+
+LibraryResult library_cancel_reservation(
+    LibraryRepository *repository,
+    int reservation_id
+) {
+    return library_cancel_reservation_at(
+        repository, reservation_id, time(NULL)
+    );
 }

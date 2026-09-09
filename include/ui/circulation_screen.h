@@ -25,6 +25,13 @@ void circulation_screen_draw_reader_fines(
     int selection,
     const wchar_t *message
 );
+void circulation_screen_draw_reader_reservations(
+    const Console *console,
+    const LibraryRepository *library,
+    int reader_id,
+    int selection,
+    const wchar_t *message
+);
 void circulation_screen_draw_admin_loans(
     const Console *console,
     const ReaderRepository *readers,
@@ -33,6 +40,13 @@ void circulation_screen_draw_admin_loans(
     const wchar_t *message
 );
 void circulation_screen_draw_admin_fines(
+    const Console *console,
+    const ReaderRepository *readers,
+    const LibraryRepository *library,
+    int selection,
+    const wchar_t *message
+);
+void circulation_screen_draw_admin_reservations(
     const Console *console,
     const ReaderRepository *readers,
     const LibraryRepository *library,

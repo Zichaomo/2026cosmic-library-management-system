@@ -12,11 +12,11 @@ Result fine_calc_for_loan(const Loan *loan, Fine *out);
 /* 缴纳罚款（模拟支付，记录缴费时间；管理员可代收） */
 Result fine_pay(EntityId fine_id);
 
-/* 未缴罚款列表 */
-Result fine_list_unpaid(const Fine **out, size_t *count);
+/* 未缴罚款列表（写入调用者数组，最多 cap 条） */
+Result fine_list_unpaid(const Fine **out, size_t cap, size_t *count);
 
-/* 某读者全部罚款单 */
-Result fine_list_by_reader(EntityId reader_id, const Fine **out, size_t *count);
+/* 某读者全部罚款单（写入调用者数组，最多 cap 条） */
+Result fine_list_by_reader(EntityId reader_id, const Fine **out, size_t cap, size_t *count);
 
 /* 罚款总收入（已缴合计） */
 double fine_total_income(void);

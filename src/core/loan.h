@@ -19,11 +19,11 @@ Result loan_return_by_copy(EntityId book_id, int copy_no);
 /* 续借 1 次 15 天；预约队列有人时禁止（FR-504） */
 Result loan_renew(EntityId loan_id);
 
-/* 全部逾期未还记录 */
-Result loan_list_overdue(const Loan **out, size_t *count);
+/* 全部逾期未还记录（写入调用者数组，最多 cap 条） */
+Result loan_list_overdue(const Loan **out, size_t cap, size_t *count);
 
-/* 某读者的借阅记录 */
-Result loan_list_by_reader(EntityId reader_id, const Loan **out, size_t *count);
+/* 某读者的借阅记录（写入调用者数组，最多 cap 条） */
+Result loan_list_by_reader(EntityId reader_id, const Loan **out, size_t cap, size_t *count);
 
 /* 某读者对某书当前有效的借阅（未还） */
 Result loan_find_active(EntityId reader_id, EntityId book_id, const Loan **out);

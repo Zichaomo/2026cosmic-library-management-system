@@ -23,8 +23,8 @@ Result reader_delete(EntityId id);
 Result reader_find_by_id(EntityId id, const Reader **out);
 Result reader_find_by_no(const char *no, const Reader **out);
 
-/* 全部读者列表 */
-Result reader_list(const Reader **out, size_t *count);
+/* 全部读者列表（未注销；写入调用者数组，最多 cap 条，*count 为写入条数） */
+Result reader_list(const Reader **out, size_t cap, size_t *count);
 
 /* 当前未还借阅本数 */
 Result reader_borrow_count(EntityId id, int *count);

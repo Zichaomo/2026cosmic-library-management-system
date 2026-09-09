@@ -17,7 +17,8 @@ enum {
     LIBRARY_RENEW_DAYS = 15,
     LIBRARY_LOAN_LIMIT = 5,
     LIBRARY_FINE_PER_DAY_CENTS = 50,
-    LIBRARY_FINE_BLOCK_CENTS = 1000
+    LIBRARY_FINE_BLOCK_CENTS = 1000,
+    LIBRARY_RESERVATION_HOLD_DAYS = 2
 };
 
 typedef enum {
@@ -67,6 +68,23 @@ typedef struct {
     char paid_at[LIBRARY_DATE_CAPACITY];
 } Fine;
 
+typedef enum {
+    RESERVATION_STATUS_WAITING = 0,
+    RESERVATION_STATUS_READY,
+    RESERVATION_STATUS_FULFILLED,
+    RESERVATION_STATUS_EXPIRED,
+    RESERVATION_STATUS_CANCELLED
+} ReservationStatus;
+
+typedef struct {
+    int id;
+    int book_id;
+    int reader_id;
+    char reserve_date[LIBRARY_DATE_CAPACITY];
+    char expire_date[LIBRARY_DATE_CAPACITY];
+    ReservationStatus status;
+} Reservation;
+
 typedef struct {
     Book *books;
     size_t book_count;
@@ -77,6 +95,9 @@ typedef struct {
     Fine *fines;
     size_t fine_count;
     size_t fine_capacity;
+    Reservation *reservations;
+    size_t reservation_count;
+    size_t reservation_capacity;
     wchar_t data_directory[MAX_PATH];
 } LibraryRepository;
 
@@ -96,6 +117,12 @@ typedef enum {
     LIBRARY_RESULT_FINE_PAID,
     LIBRARY_RESULT_INVALID_INPUT,
     LIBRARY_RESULT_DUPLICATE_ISBN,
+    LIBRARY_RESULT_BOOK_STILL_AVAILABLE,
+    LIBRARY_RESULT_RESERVATION_DUPLICATE,
+    LIBRARY_RESULT_RESERVATION_NOT_FOUND,
+    LIBRARY_RESULT_RESERVATION_NOT_READY,
+    LIBRARY_RESULT_RESERVATION_CLOSED,
+    LIBRARY_RESULT_RESERVATION_PENDING,
     LIBRARY_RESULT_STORAGE_ERROR
 } LibraryResult;
 
@@ -107,6 +134,10 @@ void library_repository_dispose(LibraryRepository *repository);
 const Book *library_find_book(const LibraryRepository *repository, int id);
 const Loan *library_find_loan(const LibraryRepository *repository, int id);
 const Fine *library_find_fine(const LibraryRepository *repository, int id);
+const Reservation *library_find_reservation(
+    const LibraryRepository *repository,
+    int id
+);
 int library_reader_active_loan_count(
     const LibraryRepository *repository,
     int reader_id
@@ -183,6 +214,39 @@ LibraryResult library_add_book_copy(
 LibraryResult library_toggle_book_status(
     LibraryRepository *repository,
     int book_id
+);
+LibraryResult library_create_reservation_at(
+    LibraryRepository *repository,
+    const ReaderRepository *readers,
+    int reader_id,
+    int book_id,
+    time_t now,
+    int *reservation_id
+);
+LibraryResult library_cancel_reservation_at(
+    LibraryRepository *repository,
+    int reservation_id,
+    time_t now
+);
+LibraryResult library_expire_reservation_for_demo(
+    LibraryRepository *repository,
+    int reservation_id,
+    time_t now
+);
+LibraryResult library_create_reservation(
+    LibraryRepository *repository,
+    const ReaderRepository *readers,
+    int reader_id,
+    int book_id,
+    int *reservation_id
+);
+LibraryResult library_cancel_reservation(
+    LibraryRepository *repository,
+    int reservation_id
+);
+bool library_refresh_reservations_at(
+    LibraryRepository *repository,
+    time_t now
 );
 
 #endif

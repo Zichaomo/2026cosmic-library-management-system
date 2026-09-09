@@ -388,6 +388,8 @@ void admin_screen_draw_stats(
     int unpaid_cents = 0;
     int paid_cents = 0;
     int frozen = 0;
+    int waiting_reservations = 0;
+    int ready_reservations = 0;
     for (size_t i = 0; i < library->book_count; ++i) {
         total_copies += library->books[i].total_copies;
         available += library->books[i].available_copies;
@@ -412,19 +414,29 @@ void admin_screen_draw_stats(
             ++frozen;
         }
     }
-    wchar_t lines[7][96];
+    for (size_t i = 0; i < library->reservation_count; ++i) {
+        if (library->reservations[i].status == RESERVATION_STATUS_WAITING) {
+            ++waiting_reservations;
+        } else if (library->reservations[i].status ==
+                   RESERVATION_STATUS_READY) {
+            ++ready_reservations;
+        }
+    }
+    wchar_t lines[8][96];
     swprintf(lines[0], 96, L"图书种类：%zu 种", library->book_count);
     swprintf(lines[1], 96, L"馆藏副本：%d 本，可借：%d 本，借出：%d 本",
              total_copies, available, total_copies - available);
     swprintf(lines[2], 96, L"注册读者：%zu 人，冻结：%d 人", readers->count, frozen);
     swprintf(lines[3], 96, L"当前借阅：%d 条，逾期未还：%d 条", active_loans, overdue);
     swprintf(lines[4], 96, L"历史借阅：%zu 条", library->loan_count);
-    swprintf(lines[5], 96, L"未缴罚款：%.2f 元", unpaid_cents / 100.0);
-    swprintf(lines[6], 96, L"累计罚款收入：%.2f 元", paid_cents / 100.0);
-    for (int i = 0; i < 7; ++i) {
+    swprintf(lines[5], 96, L"预约队列：%d 人排队，%d 人可借",
+             waiting_reservations, ready_reservations);
+    swprintf(lines[6], 96, L"未缴罚款：%.2f 元", unpaid_cents / 100.0);
+    swprintf(lines[7], 96, L"累计罚款收入：%.2f 元", paid_cents / 100.0);
+    for (int i = 0; i < 8; ++i) {
         console_write_at(
             console, 8, (short)(layout.content_y + 3 + i * 2), lines[i],
-            i == 5 && unpaid_cents > 0 ? CONSOLE_COLOR_RED :
+            i == 6 && unpaid_cents > 0 ? CONSOLE_COLOR_RED :
                 CONSOLE_COLOR_WHITE,
             CONSOLE_COLOR_BLACK
         );

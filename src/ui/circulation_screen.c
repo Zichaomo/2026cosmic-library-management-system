@@ -73,6 +73,35 @@ static const Book *loan_book(
     return library_find_book(library, loan->book_id);
 }
 
+static const wchar_t *reservation_status_name(ReservationStatus status) {
+    switch (status) {
+        case RESERVATION_STATUS_WAITING: return L"排队中";
+        case RESERVATION_STATUS_READY: return L"可借";
+        case RESERVATION_STATUS_FULFILLED: return L"已取书";
+        case RESERVATION_STATUS_EXPIRED: return L"已过期";
+        case RESERVATION_STATUS_CANCELLED: return L"已取消";
+    }
+    return L"未知";
+}
+
+static int reservation_queue_position(
+    const LibraryRepository *library,
+    size_t reservation_index
+) {
+    const Reservation *target = &library->reservations[reservation_index];
+    if (target->status != RESERVATION_STATUS_WAITING) {
+        return 0;
+    }
+    int position = 1;
+    for (size_t i = 0; i < reservation_index; ++i) {
+        if (library->reservations[i].book_id == target->book_id &&
+            library->reservations[i].status == RESERVATION_STATUS_WAITING) {
+            ++position;
+        }
+    }
+    return position;
+}
+
 void circulation_screen_draw_books(
     const Console *console,
     const LibraryRepository *library,
@@ -82,7 +111,7 @@ void circulation_screen_draw_books(
     ScreenLayout layout;
     screen_draw_shell(
         console, L"宇宙图书馆管理系统", L" 图书检索 / 自助借书 ",
-        L"↑↓/Tab 选择  Enter 借书  Esc 返回  Ctrl+Q 退出"
+        L"↑↓选择  Enter 借书  R 无副本时预约  Esc 返回"
     );
     if (!screen_get_layout(console, &layout)) {
         return;
@@ -230,6 +259,76 @@ void circulation_screen_draw_reader_fines(
     draw_message(console, &layout, message);
 }
 
+void circulation_screen_draw_reader_reservations(
+    const Console *console,
+    const LibraryRepository *library,
+    int reader_id,
+    int selection,
+    const wchar_t *message
+) {
+    ScreenLayout layout;
+    screen_draw_shell(
+        console, L"宇宙图书馆管理系统", L" 我的预约 ",
+        L"↑↓选择  Enter 领取可借图书  C 取消预约  Esc 返回"
+    );
+    if (!screen_get_layout(console, &layout)) {
+        return;
+    }
+    console_write_at(
+        console, 3, (short)(layout.content_y + 2),
+        L"预约单  图书  预约日期 / 保留期限  状态",
+        CONSOLE_COLOR_LIGHT_GRAY, CONSOLE_COLOR_BLACK
+    );
+    int item_index = 0;
+    int visible = 0;
+    for (size_t i = 0; i < library->reservation_count &&
+         visible < MAX_VISIBLE_ROWS; ++i) {
+        const Reservation *reservation = &library->reservations[i];
+        if (reservation->reader_id != reader_id) {
+            continue;
+        }
+        const Book *book = library_find_book(library, reservation->book_id);
+        const int position = reservation_queue_position(library, i);
+        wchar_t row[180];
+        if (reservation->status == RESERVATION_STATUS_WAITING) {
+            swprintf(
+                row, 180, L"预约%d  %.16ls  |  %hs  |  排队中（第%d位）",
+                reservation->id, book != NULL ? book->title : L"未知图书",
+                reservation->reserve_date, position
+            );
+        } else if (reservation->status == RESERVATION_STATUS_READY) {
+            swprintf(
+                row, 180, L"预约%d  %.16ls  |  保留至 %hs  |  可借",
+                reservation->id, book != NULL ? book->title : L"未知图书",
+                reservation->expire_date
+            );
+        } else {
+            swprintf(
+                row, 180, L"预约%d  %.16ls  |  %hs  |  %ls",
+                reservation->id, book != NULL ? book->title : L"未知图书",
+                reservation->reserve_date,
+                reservation_status_name(reservation->status)
+            );
+        }
+        draw_row(
+            console, &layout,
+            (short)(layout.content_y + LIST_START_OFFSET + visible),
+            row, item_index == selection,
+            reservation->status == RESERVATION_STATUS_EXPIRED
+        );
+        ++item_index;
+        ++visible;
+    }
+    if (item_index == 0) {
+        console_write_at(
+            console, 3, (short)(layout.content_y + LIST_START_OFFSET),
+            L"暂无预约记录。图书无可借副本时，可在图书检索页按 R 预约。",
+            CONSOLE_COLOR_DARK_GRAY, CONSOLE_COLOR_BLACK
+        );
+    }
+    draw_message(console, &layout, message);
+}
+
 void circulation_screen_draw_admin_loans(
     const Console *console,
     const ReaderRepository *readers,
@@ -326,6 +425,61 @@ void circulation_screen_draw_admin_fines(
         console_write_at(
             console, 3, (short)(layout.content_y + LIST_START_OFFSET),
             L"暂无罚款记录。逾期图书归还后会自动生成罚款单。",
+            CONSOLE_COLOR_DARK_GRAY, CONSOLE_COLOR_BLACK
+        );
+    }
+    draw_message(console, &layout, message);
+}
+
+void circulation_screen_draw_admin_reservations(
+    const Console *console,
+    const ReaderRepository *readers,
+    const LibraryRepository *library,
+    int selection,
+    const wchar_t *message
+) {
+    ScreenLayout layout;
+    screen_draw_shell(
+        console, L"宇宙图书馆管理系统", L" 预约管理 ",
+        L"↑↓选择  Enter 代办领取  C 取消  X 模拟过期  Esc 返回"
+    );
+    if (!screen_get_layout(console, &layout)) {
+        return;
+    }
+    console_write_at(
+        console, 3, (short)(layout.content_y + 2),
+        L"预约单  读者 / 图书  日期 / 期限  状态",
+        CONSOLE_COLOR_LIGHT_GRAY, CONSOLE_COLOR_BLACK
+    );
+    const size_t start = selection >= MAX_VISIBLE_ROWS
+        ? (size_t)(selection - MAX_VISIBLE_ROWS + 1) : 0;
+    int visible = 0;
+    for (size_t i = start; i < library->reservation_count &&
+         visible < MAX_VISIBLE_ROWS; ++i, ++visible) {
+        const Reservation *reservation = &library->reservations[i];
+        const Book *book = library_find_book(library, reservation->book_id);
+        wchar_t row[180];
+        swprintf(
+            row, 180, L"预约%d  %.12ls / %.14ls  |  %hs %hs  |  %ls",
+            reservation->id,
+            reader_number_by_id(readers, reservation->reader_id),
+            book != NULL ? book->title : L"未知图书",
+            reservation->reserve_date,
+            reservation->status == RESERVATION_STATUS_READY
+                ? reservation->expire_date : "",
+            reservation_status_name(reservation->status)
+        );
+        draw_row(
+            console, &layout,
+            (short)(layout.content_y + LIST_START_OFFSET + visible),
+            row, (int)i == selection,
+            reservation->status == RESERVATION_STATUS_EXPIRED
+        );
+    }
+    if (library->reservation_count == 0) {
+        console_write_at(
+            console, 3, (short)(layout.content_y + LIST_START_OFFSET),
+            L"暂无预约记录。",
             CONSOLE_COLOR_DARK_GRAY, CONSOLE_COLOR_BLACK
         );
     }

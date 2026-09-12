@@ -111,7 +111,7 @@ void circulation_screen_draw_books(
     ScreenLayout layout;
     screen_draw_shell(
         console, L"宇宙图书馆管理系统", L" 图书检索 / 自助借书 ",
-        L"↑↓选择  Enter 借书  R 无副本时预约  Esc 返回"
+        L"左键/滚轮选择  双击/Enter 借书  R 预约  右键返回"
     );
     if (!screen_get_layout(console, &layout)) {
         return;
@@ -155,7 +155,7 @@ void circulation_screen_draw_reader_loans(
     ScreenLayout layout;
     screen_draw_shell(
         console, L"宇宙图书馆管理系统", L" 我的借阅 ",
-        L"↑↓/Tab 选择  Enter 还书  R 续借  Esc 返回"
+        L"左键/滚轮选择  双击/Enter 还书  R 续借  右键返回"
     );
     if (!screen_get_layout(console, &layout)) {
         return;
@@ -165,12 +165,18 @@ void circulation_screen_draw_reader_loans(
         L"借阅单  图书                         借出日期    应还日期    状态",
         CONSOLE_COLOR_LIGHT_GRAY, CONSOLE_COLOR_BLACK
     );
+    const int start = selection >= MAX_VISIBLE_ROWS
+        ? selection - MAX_VISIBLE_ROWS + 1 : 0;
     int item_index = 0;
     int visible = 0;
     for (size_t i = 0; i < library->loan_count &&
          visible < MAX_VISIBLE_ROWS; ++i) {
         const Loan *loan = &library->loans[i];
         if (loan->reader_id != reader_id) {
+            continue;
+        }
+        if (item_index < start) {
+            ++item_index;
             continue;
         }
         const Book *book = loan_book(library, loan);
@@ -211,7 +217,7 @@ void circulation_screen_draw_reader_fines(
     ScreenLayout layout;
     wchar_t status[128];
     swprintf(
-        status, 128, L"欠款合计：%.2f 元  |  ↑↓/Tab 选择  Enter 模拟缴费  Esc 返回",
+        status, 128, L"欠款：%.2f 元  |  左键/滚轮选择  双击/Enter 缴费  右键返回",
         library_reader_unpaid_fine_cents(library, reader_id) / 100.0
     );
     screen_draw_shell(
@@ -225,12 +231,18 @@ void circulation_screen_draw_reader_fines(
         L"罚款单  借阅单  金额        生成日期    状态 / 缴费日期",
         CONSOLE_COLOR_LIGHT_GRAY, CONSOLE_COLOR_BLACK
     );
+    const int start = selection >= MAX_VISIBLE_ROWS
+        ? selection - MAX_VISIBLE_ROWS + 1 : 0;
     int item_index = 0;
     int visible = 0;
     for (size_t i = 0; i < library->fine_count &&
          visible < MAX_VISIBLE_ROWS; ++i) {
         const Fine *fine = &library->fines[i];
         if (fine->reader_id != reader_id) {
+            continue;
+        }
+        if (item_index < start) {
+            ++item_index;
             continue;
         }
         wchar_t row[180];
@@ -269,7 +281,7 @@ void circulation_screen_draw_reader_reservations(
     ScreenLayout layout;
     screen_draw_shell(
         console, L"宇宙图书馆管理系统", L" 我的预约 ",
-        L"↑↓选择  Enter 领取可借图书  C 取消预约  Esc 返回"
+        L"左键/滚轮选择  双击/Enter 领取  C 取消  右键返回"
     );
     if (!screen_get_layout(console, &layout)) {
         return;
@@ -279,12 +291,18 @@ void circulation_screen_draw_reader_reservations(
         L"预约单  图书  预约日期 / 保留期限  状态",
         CONSOLE_COLOR_LIGHT_GRAY, CONSOLE_COLOR_BLACK
     );
+    const int start = selection >= MAX_VISIBLE_ROWS
+        ? selection - MAX_VISIBLE_ROWS + 1 : 0;
     int item_index = 0;
     int visible = 0;
     for (size_t i = 0; i < library->reservation_count &&
          visible < MAX_VISIBLE_ROWS; ++i) {
         const Reservation *reservation = &library->reservations[i];
         if (reservation->reader_id != reader_id) {
+            continue;
+        }
+        if (item_index < start) {
+            ++item_index;
             continue;
         }
         const Book *book = library_find_book(library, reservation->book_id);
@@ -339,7 +357,7 @@ void circulation_screen_draw_admin_loans(
     ScreenLayout layout;
     screen_draw_shell(
         console, L"宇宙图书馆管理系统", L" 借阅管理 ",
-        L"↑↓选择  B 办理借书  Enter 还书  O 模拟逾期  Esc 返回"
+        L"左键/滚轮选择  双击还书  B 借书  O 逾期  右键返回"
     );
     if (!screen_get_layout(console, &layout)) {
         return;
@@ -391,7 +409,7 @@ void circulation_screen_draw_admin_fines(
     ScreenLayout layout;
     screen_draw_shell(
         console, L"宇宙图书馆管理系统", L" 罚款管理 ",
-        L"↑↓/Tab 选择  Enter 管理员代收  Esc 返回"
+        L"左键/滚轮选择  双击/Enter 代收  右键返回"
     );
     if (!screen_get_layout(console, &layout)) {
         return;
@@ -441,7 +459,7 @@ void circulation_screen_draw_admin_reservations(
     ScreenLayout layout;
     screen_draw_shell(
         console, L"宇宙图书馆管理系统", L" 预约管理 ",
-        L"↑↓选择  Enter 代办领取  C 取消  X 模拟过期  Esc 返回"
+        L"左键/滚轮选择  双击领取  C 取消  X 过期  右键返回"
     );
     if (!screen_get_layout(console, &layout)) {
         return;

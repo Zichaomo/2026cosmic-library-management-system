@@ -137,7 +137,7 @@ void login_screen_draw(const Console *console, const LoginForm *form) {
         console,
         L"宇宙图书馆管理系统",
         L" 用户登录 ",
-        L"Tab 切换输入框  |  Enter 登录  |  Esc 返回  |  Ctrl+Q 退出"
+        L"左键选择输入框/按钮  |  Tab 切换  |  Enter 登录  |  右键返回"
     );
 
     if (!get_login_layout(console, &layout)) {

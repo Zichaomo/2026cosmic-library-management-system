@@ -1,0 +1,8 @@
+CompileFlags:
+  Compiler: "C:/Users/xyt20/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin/gcc.exe"
+  Add:
+    - -std=c11
+    - -IC:/Users/xyt20/Desktop/2026cosmic-library-management-system/include
+
+Diagnostics:
+  UnusedIncludes: None

@@ -9,9 +9,16 @@
 typedef enum {
     UI_EVENT_NONE = 0,
     UI_EVENT_KEY,
+    UI_EVENT_MOUSE,
     UI_EVENT_RESIZE,
     UI_EVENT_REFRESH
 } UiEventType;
+
+typedef enum {
+    UI_MOUSE_NONE = 0,
+    UI_MOUSE_LEFT,
+    UI_MOUSE_RIGHT
+} UiMouseButton;
 
 typedef enum {
     UI_KEY_NONE = 0,
@@ -40,6 +47,11 @@ typedef struct {
     wchar_t character;
     short width;
     short height;
+    short mouse_x;
+    short mouse_y;
+    int mouse_wheel;
+    UiMouseButton mouse_button;
+    bool double_click;
 } UiEvent;
 
 typedef struct {

@@ -57,13 +57,13 @@ int main(void) {
             library_repository_init(&library, L"tests\\tmp_circulation"),
         "initialize circulation repositories"
     );
-    check(library.book_count == 5, "seed five demonstration books");
+    check(library.book_count == 20, "seed rich demonstration catalog");
     int added_book_id = 0;
     check(
         library_add_book(
             &library, L"9787300000001", L"管理员新增图书",
             L"测试作者", 2, &added_book_id
-        ) == LIBRARY_RESULT_SUCCESS && library.book_count == 6,
+        ) == LIBRARY_RESULT_SUCCESS && library.book_count == 21,
         "admin adds a new book"
     );
     check(
@@ -351,7 +351,7 @@ int main(void) {
     library_repository_dispose(&library);
     check(
         library_repository_init(&library, L"tests\\tmp_circulation") &&
-            library.book_count == 7 && library.loan_count == 6 &&
+            library.book_count == 22 && library.loan_count == 6 &&
             library.fine_count == 2 && library.reservation_count == 3 &&
             library.fines[0].status == FINE_STATUS_PAID &&
             library.fines[1].status == FINE_STATUS_PAID &&

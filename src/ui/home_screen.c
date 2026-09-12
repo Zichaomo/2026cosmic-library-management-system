@@ -13,7 +13,7 @@ static void draw_menu(
     int selection,
     const wchar_t *message
 ) {
-    enum { MENU_WIDTH = 36 };
+    enum { MENU_WIDTH = 44 };
     ScreenLayout layout;
 
     if (!screen_get_layout(console, &layout)) {
@@ -22,6 +22,11 @@ static void draw_menu(
 
     const short x = (short)((layout.width - MENU_WIDTH) / 2);
     const short start_y = (short)(layout.content_y + 3);
+    console_write_at(
+        console, x, (short)(layout.content_y + 1),
+        L"功能导航  /  左键进入",
+        CONSOLE_COLOR_DARK_CYAN, CONSOLE_COLOR_BLACK
+    );
     for (int index = 0; index < item_count; ++index) {
         const UiRect item = {
             x,
@@ -29,9 +34,12 @@ static void draw_menu(
             MENU_WIDTH,
             1
         };
-        widget_draw_button(
-            console, &item, labels[index], selection == index
+        wchar_t label[80];
+        swprintf(
+            label, 80, selection == index ? L"▶  %02d  %ls" : L"   %02d  %ls",
+            index + 1, labels[index]
         );
+        widget_draw_button(console, &item, label, selection == index);
     }
 
     if (message != NULL && message[0] != L'\0') {
@@ -66,7 +74,7 @@ void home_screen_draw_admin(
     swprintf(
         status,
         128,
-        L"当前用户：%ls  |  管理员  |  ↑↓/Tab 选择  Enter 确认  Esc 退出登录",
+        L"当前用户：%ls  |  管理员  |  左键/↑↓选择  Enter 确认  右键/Esc 返回",
         session->username
     );
     screen_draw_shell(
@@ -96,7 +104,7 @@ void home_screen_draw_reader(
     swprintf(
         status,
         128,
-        L"当前用户：%ls  |  读者  |  ↑↓/Tab 选择  Enter 确认  Esc 退出登录",
+        L"当前用户：%ls  |  读者  |  左键/↑↓选择  Enter 确认  右键/Esc 返回",
         session->username
     );
     screen_draw_shell(
@@ -107,4 +115,3 @@ void home_screen_draw_reader(
     );
     draw_menu(console, labels, READER_MENU_COUNT, selection, message);
 }
-

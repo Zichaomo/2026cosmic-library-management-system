@@ -9,13 +9,15 @@
 typedef struct {
     UiRect panel;
     UiRect fields[REGISTER_FIELD_COUNT];
+    UiRect submit;
+    UiRect back;
 } RegisterLayout;
 
 static bool get_register_layout(
     const Console *console,
     RegisterLayout *register_layout
 ) {
-    enum { PANEL_HEIGHT = 20 };
+    enum { PANEL_HEIGHT = 22 };
     ScreenLayout screen_layout;
 
     if (register_layout == NULL ||
@@ -44,6 +46,14 @@ static bool get_register_layout(
             3
         };
     }
+    register_layout->submit = (UiRect){
+        (short)(register_layout->panel.x + 14),
+        (short)(register_layout->panel.y + 17), 14, 3
+    };
+    register_layout->back = (UiRect){
+        (short)(register_layout->panel.x + register_layout->panel.width - 28),
+        (short)(register_layout->panel.y + 17), 14, 3
+    };
     return true;
 }
 
@@ -146,7 +156,7 @@ void register_screen_draw(
         console,
         L"宇宙图书馆管理系统",
         L" 读者注册 ",
-        L"Tab/方向键切换  |  Enter 提交注册  |  Esc 返回"
+        L"左键选择输入框/按钮  |  Enter 提交注册  |  右键返回"
     );
     if (!get_register_layout(console, &layout)) {
         return;
@@ -193,11 +203,14 @@ void register_screen_draw(
         );
     }
 
+    widget_draw_button(console, &layout.submit, L"提交注册", false);
+    widget_draw_button(console, &layout.back, L"返回", false);
+
     if (form->message[0] != L'\0') {
         console_write_at(
             console,
             (short)(layout.panel.x + 3),
-            (short)(layout.panel.y + 18),
+            (short)(layout.panel.y + 20),
             form->message,
             form->message_is_error
                 ? CONSOLE_COLOR_RED

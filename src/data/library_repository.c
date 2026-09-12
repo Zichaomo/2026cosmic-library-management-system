@@ -736,16 +736,44 @@ static bool seed_books(LibraryRepository *repository) {
     if (!format_date(time(NULL), today)) {
         return false;
     }
-    return add_seed_book(repository, L"9787111128069", L"C程序设计语言",
-               L"Brian W. Kernighan", 3, today) &&
-           add_seed_book(repository, L"9787115428028", L"数据结构（C语言版）",
-               L"严蔚敏", 2, today) &&
-           add_seed_book(repository, L"9787111544937", L"深入理解计算机系统",
-               L"Randal E. Bryant", 2, today) &&
-           add_seed_book(repository, L"9787020002207", L"红楼梦",
-               L"曹雪芹", 4, today) &&
-           add_seed_book(repository, L"9787544253994", L"百年孤独",
-               L"加西亚·马尔克斯", 2, today);
+    static const struct {
+        const wchar_t *code;
+        const wchar_t *title;
+        const wchar_t *author;
+        int copies;
+    } catalog[] = {
+        {L"9787111128069", L"C程序设计语言", L"Brian W. Kernighan", 3},
+        {L"9787115428028", L"数据结构（C语言版）", L"严蔚敏", 2},
+        {L"9787111544937", L"深入理解计算机系统", L"Randal E. Bryant", 2},
+        {L"9787020002207", L"红楼梦", L"曹雪芹", 4},
+        {L"9787544253994", L"百年孤独", L"加西亚·马尔克斯", 2},
+        {L"BUCT-CS-004", L"C Primer Plus", L"Stephen Prata", 3},
+        {L"BUCT-CS-005", L"算法导论", L"Thomas H. Cormen", 2},
+        {L"BUCT-CS-006", L"操作系统概念", L"Abraham Silberschatz", 2},
+        {L"BUCT-CS-007", L"计算机网络", L"谢希仁", 3},
+        {L"BUCT-EE-001", L"STM32嵌入式系统开发", L"实训资料组", 4},
+        {L"BUCT-AU-001", L"自动控制原理", L"胡寿松", 3},
+        {L"BUCT-AU-002", L"现代控制理论", L"刘豹", 2},
+        {L"BUCT-EE-002", L"信号与系统", L"奥本海姆", 2},
+        {L"BUCT-EE-003", L"数字电子技术基础", L"阎石", 3},
+        {L"BUCT-LIT-001", L"三体", L"刘慈欣", 4},
+        {L"BUCT-LIT-002", L"活着", L"余华", 4},
+        {L"BUCT-LIT-003", L"平凡的世界", L"路遥", 3},
+        {L"BUCT-LIT-004", L"呐喊", L"鲁迅", 3},
+        {L"BUCT-LIT-005", L"小王子", L"圣埃克苏佩里", 3},
+        {L"BUCT-SCI-001", L"时间简史", L"斯蒂芬·霍金", 2}
+    };
+
+    for (size_t index = 0;
+         index < sizeof(catalog) / sizeof(catalog[0]); ++index) {
+        if (!add_seed_book(
+                repository, catalog[index].code, catalog[index].title,
+                catalog[index].author, catalog[index].copies, today
+            )) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static void free_loaded_data(LibraryRepository *repository) {

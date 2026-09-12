@@ -3,6 +3,22 @@
 #include <stddef.h>
 #include <wchar.h>
 
+bool widget_contains_point(const UiRect *rect, short x, short y) {
+    return rect != NULL && x >= rect->x && y >= rect->y &&
+        x < rect->x + rect->width && y < rect->y + rect->height;
+}
+
+short widget_text_display_width(const wchar_t *text) {
+    int width = 0;
+    if (text == NULL) {
+        return 0;
+    }
+    for (; *text != L'\0'; ++text) {
+        width += *text <= 0x7f ? 1 : 2;
+    }
+    return width > 32767 ? 32767 : (short)width;
+}
+
 void widget_draw_box(
     const Console *console,
     const UiRect *rect,
@@ -67,7 +83,7 @@ void widget_draw_button(
         foreground, background
     );
 
-    const short label_display_width = (short)(wcslen(label) * 2);
+    const short label_display_width = widget_text_display_width(label);
     short label_x = (short)(rect->x +
         (rect->width - label_display_width) / 2);
     if (label_x < rect->x) {

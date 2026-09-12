@@ -19,6 +19,93 @@ enum {
     WELCOME_ITEM_COUNT
 };
 
+enum { MOUSE_LIST_VISIBLE_ROWS = 15 };
+
+static void route_mouse_event(
+    App *app,
+    const UiEvent *source,
+    UiEvent *routed
+);
+
+static void hash_render_bytes(
+    unsigned long long *hash,
+    const void *data,
+    size_t size
+) {
+    const unsigned char *bytes = data;
+    for (size_t index = 0; index < size; ++index) {
+        *hash ^= bytes[index];
+        *hash *= 1099511628211ULL;
+    }
+}
+
+static void hash_render_array(
+    unsigned long long *hash,
+    const void *items,
+    size_t count,
+    size_t item_size
+) {
+    hash_render_bytes(hash, &count, sizeof(count));
+    if (items != NULL && count > 0) {
+        hash_render_bytes(hash, items, count * item_size);
+    }
+}
+
+/*
+ * The input layer emits a one-second refresh event so separate terminals can
+ * synchronize their CSV data.  That event must not force a repaint when the
+ * user-visible state is unchanged, otherwise the console visibly flickers.
+ */
+static unsigned long long app_render_revision(const App *app) {
+    unsigned long long hash = 1469598103934665603ULL;
+
+    hash_render_bytes(&hash, &app->login_form, sizeof(app->login_form));
+    hash_render_bytes(&hash, &app->register_form, sizeof(app->register_form));
+    hash_render_bytes(
+        &hash, &app->admin_book_form, sizeof(app->admin_book_form)
+    );
+    hash_render_bytes(
+        &hash, &app->admin_borrow_form, sizeof(app->admin_borrow_form)
+    );
+    hash_render_bytes(&hash, &app->session, sizeof(app->session));
+    hash_render_bytes(&hash, &app->page, sizeof(app->page));
+    hash_render_bytes(
+        &hash, &app->welcome_selection, sizeof(app->welcome_selection)
+    );
+    hash_render_bytes(
+        &hash, &app->home_selection, sizeof(app->home_selection)
+    );
+    hash_render_bytes(
+        &hash, &app->list_selection, sizeof(app->list_selection)
+    );
+    hash_render_bytes(
+        &hash, app->status_message, sizeof(app->status_message)
+    );
+
+    hash_render_array(
+        &hash, app->readers.items, app->readers.count,
+        sizeof(*app->readers.items)
+    );
+    hash_render_array(
+        &hash, app->library.books, app->library.book_count,
+        sizeof(*app->library.books)
+    );
+    hash_render_array(
+        &hash, app->library.loans, app->library.loan_count,
+        sizeof(*app->library.loans)
+    );
+    hash_render_array(
+        &hash, app->library.fines, app->library.fine_count,
+        sizeof(*app->library.fines)
+    );
+    hash_render_array(
+        &hash, app->library.reservations,
+        app->library.reservation_count,
+        sizeof(*app->library.reservations)
+    );
+    return hash;
+}
+
 static bool get_welcome_buttons(
     const Console *console,
     UiRect buttons[WELCOME_ITEM_COUNT]
@@ -74,7 +161,7 @@ static void draw_welcome_page(const App *app) {
         L" 欢迎页 ",
         app->status_message[0] != L'\0'
             ? app->status_message
-            : L"方向键或 Tab 选择  |  Enter 确认  |  Ctrl+Q 退出"
+            : L"左键/方向键选择  |  Enter 确认  |  右键返回  |  Ctrl+Q 退出"
     );
 
     if (!get_welcome_buttons(&app->console, buttons)) {
@@ -235,7 +322,7 @@ static void handle_welcome_event(App *app, const UiEvent *event) {
             case UI_KEY_F1:
                 set_status(
                     app,
-                    L"帮助：选择“登录”进入账号登录界面，选择“退出”关闭系统。"
+                    L"帮助：支持左键点击、列表双击、滚轮翻页和右键返回。"
                 );
                 break;
             default:
@@ -552,6 +639,286 @@ static int circulation_item_count(const App *app) {
             return count;
         default:
             return 0;
+    }
+}
+
+static bool get_home_button_rect(
+    const Console *console,
+    int index,
+    UiRect *rect
+) {
+    enum { MENU_WIDTH = 44 };
+    ScreenLayout layout;
+    if (rect == NULL || !screen_get_layout(console, &layout)) {
+        return false;
+    }
+    rect->x = (short)((layout.width - MENU_WIDTH) / 2);
+    rect->y = (short)(layout.content_y + 3 + index * 2);
+    rect->width = MENU_WIDTH;
+    rect->height = 1;
+    return true;
+}
+
+static bool route_form_mouse(
+    App *app,
+    const UiEvent *source,
+    UiEvent *routed
+) {
+    ScreenLayout screen;
+    if (!screen_get_layout(&app->console, &screen)) {
+        return false;
+    }
+
+    if (app->page == APP_PAGE_LOGIN) {
+        enum { PANEL_WIDTH = 58, PANEL_HEIGHT = 18 };
+        const UiRect panel = {
+            (short)((screen.width - PANEL_WIDTH) / 2),
+            (short)(screen.content_y +
+                (screen.content_height - PANEL_HEIGHT) / 2),
+            PANEL_WIDTH, PANEL_HEIGHT
+        };
+        const UiRect username = {
+            (short)(panel.x + 15), (short)(panel.y + 3), 38, 3
+        };
+        const UiRect password = {
+            (short)(panel.x + 15), (short)(panel.y + 7), 38, 3
+        };
+        const UiRect submit = {
+            (short)(panel.x + 13), (short)(panel.y + 11), 12, 3
+        };
+        const UiRect back = {
+            (short)(panel.x + 33), (short)(panel.y + 11), 12, 3
+        };
+        if (widget_contains_point(
+                &username, source->mouse_x, source->mouse_y
+            )) {
+            app->login_form.active_field = LOGIN_FIELD_USERNAME;
+            app->login_form.message[0] = L'\0';
+            return true;
+        }
+        if (widget_contains_point(
+                &password, source->mouse_x, source->mouse_y
+            )) {
+            app->login_form.active_field = LOGIN_FIELD_PASSWORD;
+            app->login_form.message[0] = L'\0';
+            return true;
+        }
+        if (widget_contains_point(
+                &submit, source->mouse_x, source->mouse_y
+            )) {
+            routed->type = UI_EVENT_KEY;
+            routed->key = UI_KEY_ENTER;
+            return true;
+        }
+        if (widget_contains_point(&back, source->mouse_x, source->mouse_y)) {
+            routed->type = UI_EVENT_KEY;
+            routed->key = UI_KEY_ESCAPE;
+            return true;
+        }
+        return false;
+    }
+
+    if (app->page == APP_PAGE_REGISTER) {
+        enum { PANEL_HEIGHT = 22 };
+        if (screen.content_height < PANEL_HEIGHT || screen.width < 62) {
+            return false;
+        }
+        const short panel_width = screen.width >= 70
+            ? 66 : (short)(screen.width - 4);
+        const short panel_x = (short)((screen.width - panel_width) / 2);
+        const short panel_y = (short)(screen.content_y +
+            (screen.content_height - PANEL_HEIGHT) / 2);
+        for (int index = 0; index < REGISTER_FIELD_COUNT; ++index) {
+            const UiRect field = {
+                (short)(panel_x + 18),
+                (short)(panel_y + 2 + index * 3),
+                (short)(panel_width - 23), 3
+            };
+            if (widget_contains_point(
+                    &field, source->mouse_x, source->mouse_y
+                )) {
+                app->register_form.active_field = (RegisterField)index;
+                app->register_form.message[0] = L'\0';
+                return true;
+            }
+        }
+        const UiRect submit = {
+            (short)(panel_x + 14), (short)(panel_y + 17), 14, 3
+        };
+        const UiRect back = {
+            (short)(panel_x + panel_width - 28),
+            (short)(panel_y + 17), 14, 3
+        };
+        if (widget_contains_point(
+                &submit, source->mouse_x, source->mouse_y
+            )) {
+            routed->type = UI_EVENT_KEY;
+            routed->key = UI_KEY_ENTER;
+            return true;
+        }
+        if (widget_contains_point(&back, source->mouse_x, source->mouse_y)) {
+            routed->type = UI_EVENT_KEY;
+            routed->key = UI_KEY_ESCAPE;
+            return true;
+        }
+        return false;
+    }
+
+    if (app->page == APP_PAGE_ADMIN_ADD_BOOK ||
+        app->page == APP_PAGE_ADMIN_BORROW) {
+        const int field_count = app->page == APP_PAGE_ADMIN_ADD_BOOK
+            ? ADMIN_BOOK_FORM_FIELD_COUNT : ADMIN_BORROW_FORM_FIELD_COUNT;
+        const short panel_width = screen.width >= 76
+            ? 70 : (short)(screen.width - 4);
+        const short panel_x = (short)((screen.width - panel_width) / 2);
+        const short panel_y = (short)(screen.content_y + 2);
+        for (int index = 0; index < field_count; ++index) {
+            const UiRect field = {
+                (short)(panel_x + 17),
+                (short)(panel_y + 1 + index * 3),
+                (short)(panel_width - 21), 3
+            };
+            if (widget_contains_point(
+                    &field, source->mouse_x, source->mouse_y
+                )) {
+                if (app->page == APP_PAGE_ADMIN_ADD_BOOK) {
+                    app->admin_book_form.active_field = index;
+                    app->admin_book_form.message[0] = L'\0';
+                } else {
+                    app->admin_borrow_form.active_field = index;
+                    app->admin_borrow_form.message[0] = L'\0';
+                }
+                return true;
+            }
+        }
+        const short action_y = (short)(panel_y + 2 + field_count * 3);
+        const UiRect submit = {
+            (short)(panel_x + 14), action_y, 14, 3
+        };
+        const UiRect back = {
+            (short)(panel_x + panel_width - 28), action_y, 14, 3
+        };
+        if (widget_contains_point(
+                &submit, source->mouse_x, source->mouse_y
+            )) {
+            routed->type = UI_EVENT_KEY;
+            routed->key = UI_KEY_ENTER;
+            return true;
+        }
+        if (widget_contains_point(&back, source->mouse_x, source->mouse_y)) {
+            routed->type = UI_EVENT_KEY;
+            routed->key = UI_KEY_ESCAPE;
+            return true;
+        }
+    }
+    return false;
+}
+
+static void route_mouse_event(
+    App *app,
+    const UiEvent *source,
+    UiEvent *routed
+) {
+    if (source->type != UI_EVENT_MOUSE) {
+        return;
+    }
+
+    routed->type = UI_EVENT_NONE;
+    routed->key = UI_KEY_NONE;
+    if (source->mouse_wheel != 0) {
+        routed->type = UI_EVENT_KEY;
+        routed->key = source->mouse_wheel > 0 ? UI_KEY_UP : UI_KEY_DOWN;
+        return;
+    }
+    if (source->mouse_button == UI_MOUSE_RIGHT) {
+        routed->type = UI_EVENT_KEY;
+        routed->key = UI_KEY_ESCAPE;
+        return;
+    }
+    if (source->mouse_button != UI_MOUSE_LEFT) {
+        return;
+    }
+
+    if (app->page == APP_PAGE_WELCOME) {
+        UiRect buttons[WELCOME_ITEM_COUNT];
+        if (!get_welcome_buttons(&app->console, buttons)) {
+            return;
+        }
+        for (int index = 0; index < WELCOME_ITEM_COUNT; ++index) {
+            if (widget_contains_point(
+                    &buttons[index], source->mouse_x, source->mouse_y
+                )) {
+                app->welcome_selection = index;
+                routed->type = UI_EVENT_KEY;
+                routed->key = UI_KEY_ENTER;
+                return;
+            }
+        }
+        return;
+    }
+
+    if (app->page == APP_PAGE_ADMIN_HOME ||
+        app->page == APP_PAGE_READER_HOME) {
+        const int count = app->page == APP_PAGE_ADMIN_HOME
+            ? ADMIN_MENU_COUNT : READER_MENU_COUNT;
+        for (int index = 0; index < count; ++index) {
+            UiRect button;
+            if (get_home_button_rect(&app->console, index, &button) &&
+                widget_contains_point(
+                    &button, source->mouse_x, source->mouse_y
+                )) {
+                app->home_selection = index;
+                routed->type = UI_EVENT_KEY;
+                routed->key = UI_KEY_ENTER;
+                return;
+            }
+        }
+        return;
+    }
+
+    if (app->page == APP_PAGE_LOGIN || app->page == APP_PAGE_REGISTER ||
+        app->page == APP_PAGE_ADMIN_ADD_BOOK ||
+        app->page == APP_PAGE_ADMIN_BORROW) {
+        route_form_mouse(app, source, routed);
+        return;
+    }
+
+    int count = 0;
+    if (app->page == APP_PAGE_ADMIN_BOOKS) {
+        count = (int)app->library.book_count;
+    } else if (app->page == APP_PAGE_ADMIN_READERS) {
+        count = (int)app->readers.count;
+    } else {
+        count = circulation_item_count(app);
+    }
+    if (count <= 0) {
+        return;
+    }
+
+    ScreenLayout layout;
+    if (!screen_get_layout(&app->console, &layout)) {
+        return;
+    }
+    const short first_row = (short)(layout.content_y + 4);
+    const int visible_row = source->mouse_y - first_row;
+    if (source->mouse_x < 2 || source->mouse_x >= layout.width - 2 ||
+        visible_row < 0 || visible_row >= MOUSE_LIST_VISIBLE_ROWS) {
+        return;
+    }
+    const int start = app->list_selection >= MOUSE_LIST_VISIBLE_ROWS
+        ? app->list_selection - MOUSE_LIST_VISIBLE_ROWS + 1 : 0;
+    const int clicked = start + visible_row;
+    if (clicked >= count) {
+        return;
+    }
+    app->list_selection = clicked;
+    app->status_message[0] = L'\0';
+    if (source->double_click &&
+        app->page != APP_PAGE_ADMIN_BOOKS &&
+        app->page != APP_PAGE_ADMIN_READERS &&
+        app->page != APP_PAGE_ADMIN_STATS) {
+        routed->type = UI_EVENT_KEY;
+        routed->key = UI_KEY_ENTER;
     }
 }
 
@@ -1282,6 +1649,9 @@ int app_run(App *app) {
             return EXIT_FAILURE;
         }
 
+        const unsigned long long render_revision_before =
+            app_render_revision(app);
+
         if (!reader_repository_sync(&app->readers) ||
             !library_repository_sync(&app->library)) {
             set_status(
@@ -1292,24 +1662,28 @@ int app_run(App *app) {
             set_status(app, L"已从其他终端同步最新数据。");
         }
 
-        if (event.type == UI_EVENT_KEY && event.key == UI_KEY_CTRL_Q) {
+        UiEvent routed_event = event;
+        route_mouse_event(app, &event, &routed_event);
+
+        if (routed_event.type == UI_EVENT_KEY &&
+            routed_event.key == UI_KEY_CTRL_Q) {
             app->running = false;
             continue;
         }
 
         switch (app->page) {
             case APP_PAGE_WELCOME:
-                handle_welcome_event(app, &event);
+                handle_welcome_event(app, &routed_event);
                 break;
             case APP_PAGE_LOGIN:
-                handle_login_event(app, &event);
+                handle_login_event(app, &routed_event);
                 break;
             case APP_PAGE_REGISTER:
-                handle_register_event(app, &event);
+                handle_register_event(app, &routed_event);
                 break;
             case APP_PAGE_ADMIN_HOME:
             case APP_PAGE_READER_HOME:
-                handle_home_event(app, &event);
+                handle_home_event(app, &routed_event);
                 break;
             case APP_PAGE_BOOK_CATALOG:
             case APP_PAGE_READER_LOANS:
@@ -1318,20 +1692,23 @@ int app_run(App *app) {
             case APP_PAGE_ADMIN_LOANS:
             case APP_PAGE_ADMIN_RESERVATIONS:
             case APP_PAGE_ADMIN_FINES:
-                handle_circulation_event(app, &event);
+                handle_circulation_event(app, &routed_event);
                 break;
             case APP_PAGE_ADMIN_BOOKS:
             case APP_PAGE_ADMIN_READERS:
             case APP_PAGE_ADMIN_STATS:
-                handle_admin_management_event(app, &event);
+                handle_admin_management_event(app, &routed_event);
                 break;
             case APP_PAGE_ADMIN_ADD_BOOK:
             case APP_PAGE_ADMIN_BORROW:
-                handle_admin_form_event(app, &event);
+                handle_admin_form_event(app, &routed_event);
                 break;
         }
 
-        if (app->running) {
+        const bool window_resized = routed_event.type == UI_EVENT_RESIZE;
+        const bool visible_state_changed =
+            render_revision_before != app_render_revision(app);
+        if (app->running && (window_resized || visible_state_changed)) {
             draw_current_page(app);
         }
     }

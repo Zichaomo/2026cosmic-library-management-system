@@ -87,8 +87,8 @@ bool console_init(Console *console) {
 
     if (console->has_input_mode) {
         DWORD input_mode = console->original_input_mode;
-        input_mode |= ENABLE_EXTENDED_FLAGS | ENABLE_WINDOW_INPUT;
-        input_mode &= ~ENABLE_MOUSE_INPUT;
+        input_mode |= ENABLE_EXTENDED_FLAGS | ENABLE_WINDOW_INPUT |
+                      ENABLE_MOUSE_INPUT;
         input_mode &= ~(ENABLE_QUICK_EDIT_MODE | ENABLE_LINE_INPUT |
                         ENABLE_ECHO_INPUT);
         SetConsoleMode(console->input, input_mode);

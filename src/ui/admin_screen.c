@@ -173,13 +173,13 @@ static void draw_form(
     ScreenLayout screen;
     screen_draw_shell(
         console, L"宇宙图书馆管理系统", page_name,
-        L"Tab/方向键切换  Enter 提交  Esc 返回"
+        L"左键选择输入框/按钮  Tab 切换  Enter 提交  右键返回"
     );
     if (!screen_get_layout(console, &screen)) {
         return;
     }
     const short panel_width = screen.width >= 76 ? 70 : (short)(screen.width - 4);
-    const short panel_height = (short)(field_count * 3 + 4);
+    const short panel_height = (short)(field_count * 3 + 8);
     UiRect panel = {
         (short)((screen.width - panel_width) / 2),
         (short)(screen.content_y + 2),
@@ -199,6 +199,15 @@ static void draw_form(
         );
         widget_draw_input(console, &input, values[i], false, i == active_field);
     }
+    const short action_y = (short)(panel.y + 2 + field_count * 3);
+    const UiRect submit = {
+        (short)(panel.x + 14), action_y, 14, 3
+    };
+    const UiRect back = {
+        (short)(panel.x + panel.width - 28), action_y, 14, 3
+    };
+    widget_draw_button(console, &submit, L"确认提交", false);
+    widget_draw_button(console, &back, L"返回", false);
     if (message != NULL && message[0] != L'\0') {
         console_write_at(
             console, (short)(panel.x + 3),
@@ -285,7 +294,7 @@ void admin_screen_draw_books(
     ScreenLayout layout;
     screen_draw_shell(
         console, L"宇宙图书馆管理系统", L" 图书管理 ",
-        L"↑↓选择  N 新增  + 增加副本  S 停借/恢复  Esc 返回"
+        L"左键/滚轮选择  N 新增  + 副本  S 停借/恢复  右键返回"
     );
     if (!screen_get_layout(console, &layout)) {
         return;
@@ -301,12 +310,15 @@ void admin_screen_draw_books(
     for (size_t i = start; i < library->book_count &&
          visible < MAX_VISIBLE_ROWS; ++i, ++visible) {
         const Book *book = &library->books[i];
+        const wchar_t *availability = book->status == BOOK_STATUS_SUSPENDED
+            ? L"停借"
+            : (book->available_copies <= 0 ? L"已借完" : L"在架");
         wchar_t row[180];
         swprintf(
             row, 180, L"[%d] %.18ls  %.14ls / %.10ls  |  %d/%d %ls",
             book->id, book->isbn, book->title, book->author,
             book->available_copies, book->total_copies,
-            book->status == BOOK_STATUS_AVAILABLE ? L"在架" : L"停借"
+            availability
         );
         draw_list_row(
             console, &layout, (short)(layout.content_y + 4 + visible),
@@ -327,7 +339,7 @@ void admin_screen_draw_readers(
     ScreenLayout layout;
     screen_draw_shell(
         console, L"宇宙图书馆管理系统", L" 读者管理 ",
-        L"↑↓/Tab 选择  F 冻结/解冻  Esc 返回"
+        L"左键/滚轮选择  F 冻结/解冻  右键返回"
     );
     if (!screen_get_layout(console, &layout)) {
         return;
@@ -376,7 +388,7 @@ void admin_screen_draw_stats(
     ScreenLayout layout;
     screen_draw_shell(
         console, L"宇宙图书馆管理系统", L" 统计报表 ",
-        L"F5 刷新  Esc 返回"
+        L"F5 刷新  右键/Esc 返回"
     );
     if (!screen_get_layout(console, &layout)) {
         return;

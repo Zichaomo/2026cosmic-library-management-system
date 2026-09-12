@@ -12,6 +12,9 @@ typedef struct {
     short height;
 } UiRect;
 
+bool widget_contains_point(const UiRect *rect, short x, short y);
+short widget_text_display_width(const wchar_t *text);
+
 void widget_draw_box(
     const Console *console,
     const UiRect *rect,

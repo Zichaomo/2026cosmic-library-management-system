@@ -84,6 +84,18 @@ void screen_draw_title_bar(
         CONSOLE_COLOR_WHITE, CONSOLE_COLOR_DARK_BLUE
     );
 
+    if (layout->width >= 76) {
+        console_write_at(
+            console, 2, layout->title_y, L"BUCT / 0Error",
+            CONSOLE_COLOR_CYAN, CONSOLE_COLOR_DARK_BLUE
+        );
+        console_write_at(
+            console, (short)(layout->width - 15), layout->title_y,
+            L"FINAL  v1.0.0",
+            CONSOLE_COLOR_YELLOW, CONSOLE_COLOR_DARK_BLUE
+        );
+    }
+
     short title_x = (short)((layout->width - TITLE_DISPLAY_WIDTH) / 2);
     if (title_x < 1) {
         title_x = 1;

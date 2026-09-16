@@ -1,0 +1,36 @@
+# 编译输出
+/build/
+*.exe
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.pdb
+*.ilk
+*.map
+*.d
+
+# 程序运行时生成的数据、备份与日志
+/data/*.csv
+/data/*.bak
+/data/*.backup
+/data/*.corrupt
+/tests/tmp_data/
+/tests/tmp_circulation/
+*.log
+
+# CSV 原子保存及编辑器产生的临时文件
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# 本机专用的 VS Code 配置；公共构建配置继续提交
+.vscode/*.local.json
+
+# 操作系统生成的无关文件
+Thumbs.db
+Desktop.ini
+.DS_Store

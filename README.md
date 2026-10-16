@@ -41,7 +41,7 @@
 | 时间日期 | `<time.h>` 5 处；`time` 27、`strftime` 2 | ⚠️ 部分可以 | `time` 有教材依据（书上第 64 页）可保留；`strftime`、`localtime` 教材里没有，年月日换算要自己写 |
 | 内存/字符串 | `memset` 29、`snprintf` 17、`strncpy` 10、`strtol` 3、`memmove` 3、`memcpy` 2、`memcmp` 1 | ❌ 不允许 | 需手写循环或改用 `strcpy`/`strcat`/`strlen` |
 | 其它 | `fflush` 2、`sscanf` 2、`exit` 1 | ⚠️ 部分可以 | `exit` 教材多处使用（可保留）；`fflush`、`sscanf` 教材里没有，需要替换 |
-| 类型头 | `<stdbool.h>` 15、`<stddef.h>` 10、`<stdint.h>` 2、`<limits.h>` 1、`<errno.h>` 2 | ⚠️ 待确认 | 只提供类型与宏、不提供函数，需老师确认是否算越界 |
+| 类型头 | `<stdbool.h>` 15、`<stddef.h>` 10、`<stdint.h>` 2、`<limits.h>` 1、`<errno.h>` 2 | ✅ 自写 typedef 替代 | 不再包含这些头文件：`size_t`/`NULL`/`INT_MAX`/`EOF`/`FILE` 由 `<stdio.h>` 自带（实测重定义会报 conflicting types），`bool`/`u8`/`u16`/`u32`/`u64` 放进项目自己的 `include/base_types.h` —— typedef 与 #define 是语言特性、不是库函数 |
 
 按教材附录 C，实现时**实际可用的库函数只有这 66 个**：数学 20（`abs`…`tanh`）、字符 13（`isalnum`…`toupper`）、字符串 6（`strcat`/`strchr`/`strcmp`/`strcpy`/`strlen`/`strstr`）、输入输出 6（`getchar`/`gets`/`printf`/`putchar`/`puts`/`scanf`）、文件 17（`fclose`…`rewind`）、内存 4（`calloc`/`free`/`malloc`/`realloc`）。
 
@@ -59,13 +59,14 @@
 
 ## 4. 重构方向（待办，尚未动代码）
 
-1. **输出层**：只用 `printf` / `puts` / `putchar` / `fputs` 绘制，禁止 Win32 光标、颜色、清屏 API。想保留彩色 TUI，只剩「用 `printf` 打印 ANSI 转义序列」一条路（清屏 `"\033[2J"`、定位 `"\033[10;20H"`、上色 `"\033[31m"`）—— 它是字符串不是库函数，但**需要老师点头**，见清单文档第 8 节第 1 条；中文方案用 UTF-8（`chcp 65001`）。
+1. **输出层**：只用 `printf` / `puts` / `putchar` / `fputs` 绘制，禁止 Win32 光标、颜色、清屏 API；彩色 TUI 改用 `printf` 打印 ANSI 转义序列（清屏 `"\033[2J"`、定位 `"\033[10;20H"`、上色 `"\033[31m"`）—— **2026-10-16 已确认可行**（它是字符串不是库函数，依赖终端支持 VT）；中文用 UTF-8（`chcp 65001`）。
 2. **输入层**：`getch()` / `getche()` 有教材依据（书上第 42 页，`<conio.h>`），且本机 w64devkit 工具链实测可直接编译 —— **按键菜单、无回车响应可以保留**；鼠标与滚轮依赖 Win32，必须放弃。
 3. **日期时间**：`time()` 有教材依据（书上第 64 页），可以取当前时间；但 `localtime` / `strftime` 教材里没有，年月日换算要自己写。
 4. **字符串与格式化**：用 `printf` / `fprintf` 直出替代 `snprintf` / `sprintf`；用 `strcpy` + `strcat` + `strlen` 替代 `strncpy`；用 `for` 循环替代 `memcpy` / `memset` / `memmove`。
 5. **随机与散列**：盐值用 `rand`；FNV-1a 散列自己写循环（本来就不依赖库）。
 6. **界面**：重做为纯标准 C 的菜单式 TUI，重新设计信息层级、分页与提示文案。
 7. **测试与文档**：重写依赖控制台行为的测试；同步更新本 README 与 `docs/` 下各文档口径。
+8. **类型定义**：新建 `include/base_types.h`（只有 typedef / #define，不含任何函数调用），替代 `<stdbool.h>` / `<stdint.h>` / `<stddef.h>` / `<limits.h>` / `<errno.h>`。`size_t` / `NULL` / `INT_MAX` / `EOF` / `FILE` 由 `<stdio.h>` 自带、不再重复定义（实测重定义会报 `conflicting types`）；`bool` / `true` / `false` 共 509 处可原样保留；`uint64_t` / `uint16_t` 改名 `u64` / `u16`；`errno` 7 处改用返回值 / `feof` / `ferror` 判断。详见清单文档第 9 节。
 
 ## 5. 仓库与分支状态
 

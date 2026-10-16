@@ -23,6 +23,7 @@ typedef struct {
     wchar_t password[LOGIN_PASSWORD_CAPACITY];
     size_t username_length;
     size_t password_length;
+    size_t carets[2];
     LoginField active_field;
     wchar_t message[LOGIN_MESSAGE_CAPACITY];
     bool message_is_error;

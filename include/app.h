@@ -51,6 +51,7 @@ typedef struct {
 } App;
 
 bool app_init(App *app);
+unsigned long long app_render_revision(const App *app, time_t now);
 int app_run(App *app);
 void app_shutdown(App *app);
 

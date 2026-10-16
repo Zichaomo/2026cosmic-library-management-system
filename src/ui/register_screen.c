@@ -5,6 +5,7 @@
 
 #include "ui/screen.h"
 #include "ui/widget.h"
+#include "ui/text_edit.h"
 
 typedef struct {
     UiRect panel;
@@ -85,33 +86,31 @@ static wchar_t *get_field_buffer(
     return NULL;
 }
 
-static void append_character(RegisterForm *form, wchar_t character) {
+static void edit_character(RegisterForm *form, const UiEvent *event) {
     size_t capacity = 0;
     wchar_t *buffer = get_field_buffer(
         form, form->active_field, &capacity
     );
     size_t *length = &form->lengths[form->active_field];
-    if (buffer == NULL || *length + 1 >= capacity) {
+    if (buffer == NULL || (event->key == UI_KEY_CHARACTER &&
+            *length + 1 >= capacity)) {
         register_form_set_message(form, L"输入内容已达到最大长度。", true);
         return;
     }
 
-    buffer[(*length)++] = character;
-    buffer[*length] = L'\0';
-    form->message[0] = L'\0';
+    if (text_edit_handle(buffer, capacity, length,
+            &form->carets[form->active_field], event)) {
+        form->message[0] = L'\0';
+    }
 }
 
-static void remove_character(RegisterForm *form) {
+void register_form_place_caret(RegisterForm *form, const UiRect *rect, short x) {
     size_t capacity = 0;
-    wchar_t *buffer = get_field_buffer(
-        form, form->active_field, &capacity
-    );
-    size_t *length = &form->lengths[form->active_field];
-    (void)capacity;
-    if (buffer != NULL && *length > 0) {
-        buffer[--(*length)] = L'\0';
-    }
-    form->message[0] = L'\0';
+    wchar_t *value = get_field_buffer(form, form->active_field, &capacity);
+    const bool password = form->active_field == REGISTER_FIELD_PASSWORD ||
+        form->active_field == REGISTER_FIELD_PASSWORD_CONFIRMATION;
+    form->carets[form->active_field] = widget_input_caret_from_click(
+        rect, value, password, form->carets[form->active_field], x);
 }
 
 void register_form_init(RegisterForm *form) {
@@ -144,7 +143,7 @@ void register_screen_draw(
         L"学号/工号：",
         L"密码：",
         L"确认密码：",
-        L"联系方式："
+        L"手机号："
     };
     RegisterLayout layout;
 
@@ -156,7 +155,7 @@ void register_screen_draw(
         console,
         L"宇宙图书馆管理系统",
         L" 读者注册 ",
-        L"左键选择输入框/按钮  |  Enter 提交注册  |  右键返回"
+        L"Tab 切换  左右/Home/End 移动光标  Enter 注册  手机号为 11 位数字"
     );
     if (!get_register_layout(console, &layout)) {
         return;
@@ -193,13 +192,14 @@ void register_screen_draw(
             case REGISTER_FIELD_COUNT:
                 break;
         }
-        widget_draw_input(
+        widget_draw_input_at_caret(
             console,
             &layout.fields[index],
             value,
             index == REGISTER_FIELD_PASSWORD ||
                 index == REGISTER_FIELD_PASSWORD_CONFIRMATION,
-            form->active_field == (RegisterField)index
+            form->active_field == (RegisterField)index,
+            form->carets[index]
         );
     }
 
@@ -249,10 +249,13 @@ RegisterAction register_screen_handle_event(
         case UI_KEY_ESCAPE:
             return REGISTER_ACTION_BACK;
         case UI_KEY_BACKSPACE:
-            remove_character(form);
-            break;
+        case UI_KEY_DELETE:
+        case UI_KEY_LEFT:
+        case UI_KEY_RIGHT:
+        case UI_KEY_HOME:
+        case UI_KEY_END:
         case UI_KEY_CHARACTER:
-            append_character(form, event->character);
+            edit_character(form, event);
             break;
         default:
             break;

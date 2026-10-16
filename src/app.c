@@ -56,7 +56,7 @@ static void hash_render_array(
  * synchronize their CSV data.  That event must not force a repaint when the
  * user-visible state is unchanged, otherwise the console visibly flickers.
  */
-static unsigned long long app_render_revision(const App *app) {
+unsigned long long app_render_revision(const App *app, time_t now) {
     unsigned long long hash = 1469598103934665603ULL;
 
     hash_render_bytes(&hash, &app->login_form, sizeof(app->login_form));
@@ -103,6 +103,12 @@ static unsigned long long app_render_revision(const App *app) {
         app->library.reservation_count,
         sizeof(*app->library.reservations)
     );
+    /* Loan labels and statistics change at midnight even without CSV writes. */
+    for (size_t i = 0; i < app->library.loan_count; ++i) {
+        const int overdue_days = library_loan_overdue_days(
+            &app->library.loans[i], now);
+        hash_render_bytes(&hash, &overdue_days, sizeof(overdue_days));
+    }
     return hash;
 }
 
@@ -272,7 +278,8 @@ static void draw_current_page(const App *app) {
             break;
         case APP_PAGE_ADMIN_STATS:
             admin_screen_draw_stats(
-                &app->console, &app->readers, &app->library
+                &app->console, &app->readers, &app->library,
+                app->list_selection, app->status_message
             );
             break;
     }
@@ -385,6 +392,8 @@ static void open_login_after_registration(App *app) {
     );
     app->login_form.username[LOGIN_USERNAME_CAPACITY - 1] = L'\0';
     app->login_form.username_length = wcslen(app->login_form.username);
+    app->login_form.carets[LOGIN_FIELD_USERNAME] =
+        app->login_form.username_length;
     app->login_form.active_field = LOGIN_FIELD_PASSWORD;
     login_form_set_message(
         &app->login_form,
@@ -430,6 +439,12 @@ static void submit_registration(App *app) {
                 &app->register_form,
                 L"注册失败：密码不能少于 6 位。",
                 true
+            );
+            break;
+        case REGISTER_RESULT_INVALID_CONTACT:
+            app->register_form.active_field = REGISTER_FIELD_CONTACT;
+            register_form_set_message(
+                &app->register_form, L"手机号须为 11 位数字，以 13～19 开头。", true
             );
             break;
         case REGISTER_RESULT_PASSWORD_MISMATCH:
@@ -519,6 +534,7 @@ static void activate_admin_item(App *app) {
             app->page = APP_PAGE_ADMIN_FINES;
             break;
         case ADMIN_MENU_STATS:
+            app->list_selection = 0;
             app->status_message[0] = L'\0';
             app->page = APP_PAGE_ADMIN_STATS;
             break;
@@ -693,6 +709,10 @@ static bool route_form_mouse(
                 &username, source->mouse_x, source->mouse_y
             )) {
             app->login_form.active_field = LOGIN_FIELD_USERNAME;
+            app->login_form.carets[LOGIN_FIELD_USERNAME] =
+                widget_input_caret_from_click(&username,
+                    app->login_form.username, false,
+                    app->login_form.carets[LOGIN_FIELD_USERNAME], source->mouse_x);
             app->login_form.message[0] = L'\0';
             return true;
         }
@@ -700,6 +720,10 @@ static bool route_form_mouse(
                 &password, source->mouse_x, source->mouse_y
             )) {
             app->login_form.active_field = LOGIN_FIELD_PASSWORD;
+            app->login_form.carets[LOGIN_FIELD_PASSWORD] =
+                widget_input_caret_from_click(&password,
+                    app->login_form.password, true,
+                    app->login_form.carets[LOGIN_FIELD_PASSWORD], source->mouse_x);
             app->login_form.message[0] = L'\0';
             return true;
         }
@@ -738,6 +762,8 @@ static bool route_form_mouse(
                     &field, source->mouse_x, source->mouse_y
                 )) {
                 app->register_form.active_field = (RegisterField)index;
+                register_form_place_caret(&app->register_form, &field,
+                    source->mouse_x);
                 app->register_form.message[0] = L'\0';
                 return true;
             }
@@ -783,9 +809,13 @@ static bool route_form_mouse(
                 )) {
                 if (app->page == APP_PAGE_ADMIN_ADD_BOOK) {
                     app->admin_book_form.active_field = index;
+                    admin_book_form_place_caret(&app->admin_book_form, &field,
+                        source->mouse_x);
                     app->admin_book_form.message[0] = L'\0';
                 } else {
                     app->admin_borrow_form.active_field = index;
+                    admin_borrow_form_place_caret(&app->admin_borrow_form, &field,
+                        source->mouse_x);
                     app->admin_borrow_form.message[0] = L'\0';
                 }
                 return true;
@@ -880,6 +910,21 @@ static void route_mouse_event(
         app->page == APP_PAGE_ADMIN_ADD_BOOK ||
         app->page == APP_PAGE_ADMIN_BORROW) {
         route_form_mouse(app, source, routed);
+        return;
+    }
+
+    if (app->page == APP_PAGE_ADMIN_STATS) {
+        const int hit = admin_stats_hit_test(
+            &app->console, source->mouse_x, source->mouse_y
+        );
+        if (hit >= 0) {
+            app->list_selection = hit;
+            app->status_message[0] = L'\0';
+            if (source->double_click) {
+                routed->type = UI_EVENT_KEY;
+                routed->key = UI_KEY_ENTER;
+            }
+        }
         return;
     }
 
@@ -1492,7 +1537,13 @@ static void handle_admin_management_event(App *app, const UiEvent *event) {
     const int item_count = app->page == APP_PAGE_ADMIN_BOOKS
         ? (int)app->library.book_count
         : (app->page == APP_PAGE_ADMIN_READERS
-            ? (int)app->readers.count : 0);
+            ? (int)app->readers.count : ADMIN_STATS_CARD_COUNT);
+    if (app->page == APP_PAGE_ADMIN_STATS && event->key == UI_KEY_ENTER) {
+        admin_stats_format_hint(&app->readers, &app->library,
+            app->list_selection, app->status_message,
+            sizeof(app->status_message) / sizeof(app->status_message[0]));
+        return;
+    }
     if (event->key == UI_KEY_TAB || event->key == UI_KEY_DOWN) {
         move_admin_list_selection(app, 1, item_count);
         return;
@@ -1643,14 +1694,12 @@ int app_run(App *app) {
         return EXIT_SUCCESS;
     }
 
+    unsigned long long last_render_revision = app_render_revision(app, time(NULL));
     while (app->running) {
         UiEvent event;
         if (!input_read(&app->input, &event)) {
             return EXIT_FAILURE;
         }
-
-        const unsigned long long render_revision_before =
-            app_render_revision(app);
 
         if (!reader_repository_sync(&app->readers) ||
             !library_repository_sync(&app->library)) {
@@ -1706,10 +1755,11 @@ int app_run(App *app) {
         }
 
         const bool window_resized = routed_event.type == UI_EVENT_RESIZE;
-        const bool visible_state_changed =
-            render_revision_before != app_render_revision(app);
+        const unsigned long long revision = app_render_revision(app, time(NULL));
+        const bool visible_state_changed = last_render_revision != revision;
         if (app->running && (window_resized || visible_state_changed)) {
             draw_current_page(app);
+            last_render_revision = revision;
         }
     }
 

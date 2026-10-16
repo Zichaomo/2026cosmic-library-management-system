@@ -11,13 +11,14 @@ CIRCULATION_TEST_SOURCES := tests/test_circulation.c src/core/auth.c \
 	src/data/csv.c src/data/reader_repository.c \
 	src/data/library_repository.c src/utils/hash.c src/utils/text.c
 UI_TEST_TARGET := build/ui_tests.exe
-UI_TEST_SOURCES := tests/test_ui.c src/ui/widget.c src/ui/console.c
+UI_TEST_SOURCES := tests/test_ui.c $(filter-out src/main.c,$(SOURCES))
+HEADERS := $(wildcard include/*.h include/ui/*.h include/core/*.h include/data/*.h include/utils/*.h)
 
 .PHONY: all run test clean
 
 all: $(TARGET)
 
-$(TARGET): $(SOURCES)
+$(TARGET): $(SOURCES) $(HEADERS)
 	@if not exist build mkdir build
 	$(CC) $(CFLAGS) $(SOURCES) -o $(TARGET) $(LDLIBS)
 
@@ -29,17 +30,17 @@ test: $(AUTH_TEST_TARGET) $(CIRCULATION_TEST_TARGET) $(UI_TEST_TARGET)
 	$(CIRCULATION_TEST_TARGET)
 	$(UI_TEST_TARGET)
 
-$(AUTH_TEST_TARGET): $(AUTH_TEST_SOURCES)
+$(AUTH_TEST_TARGET): $(AUTH_TEST_SOURCES) $(HEADERS)
 	@if not exist build mkdir build
 	$(CC) $(CFLAGS) $(AUTH_TEST_SOURCES) -o $(AUTH_TEST_TARGET) $(LDLIBS)
 
-$(CIRCULATION_TEST_TARGET): $(CIRCULATION_TEST_SOURCES)
+$(CIRCULATION_TEST_TARGET): $(CIRCULATION_TEST_SOURCES) $(HEADERS)
 	@if not exist build mkdir build
 	$(CC) $(CFLAGS) $(CIRCULATION_TEST_SOURCES) -o $(CIRCULATION_TEST_TARGET) $(LDLIBS)
 
-$(UI_TEST_TARGET): $(UI_TEST_SOURCES)
+$(UI_TEST_TARGET): $(UI_TEST_SOURCES) $(HEADERS)
 	@if not exist build mkdir build
-	$(CC) $(CFLAGS) $(UI_TEST_SOURCES) -o $(UI_TEST_TARGET)
+	$(CC) $(CFLAGS) $(UI_TEST_SOURCES) -o $(UI_TEST_TARGET) $(LDLIBS)
 
 clean:
 	@if exist build rmdir /S /Q build

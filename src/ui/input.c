@@ -23,6 +23,8 @@ static UiKey map_virtual_key(const KEY_EVENT_RECORD *key_event) {
             return UI_KEY_ESCAPE;
         case VK_BACK:
             return UI_KEY_BACKSPACE;
+        case VK_DELETE:
+            return UI_KEY_DELETE;
         case VK_UP:
             return UI_KEY_UP;
         case VK_DOWN:

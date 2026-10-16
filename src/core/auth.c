@@ -29,6 +29,16 @@ static bool reader_number_is_valid(const wchar_t *reader_no) {
     return true;
 }
 
+bool auth_mobile_number_is_valid(const wchar_t *contact) {
+    /* Mainland mobile format, not a check of ownership or availability. */
+    if (contact == NULL || wcslen(contact) != 11 || contact[0] != L'1' ||
+        contact[1] < L'3' || contact[1] > L'9') return false;
+    for (size_t i = 2; i < 11; ++i) {
+        if (contact[i] < L'0' || contact[i] > L'9') return false;
+    }
+    return true;
+}
+
 static void create_session(
     UserSession *session,
     const wchar_t *username,
@@ -101,6 +111,12 @@ RegisterResult auth_register_reader(
     }
     if (!reader_number_is_valid(request->reader_no)) {
         return REGISTER_RESULT_INVALID_READER_NO;
+    }
+    if (wcscmp(request->reader_no, L"admin") == 0) {
+        return REGISTER_RESULT_DUPLICATE_READER_NO;
+    }
+    if (!auth_mobile_number_is_valid(request->contact)) {
+        return REGISTER_RESULT_INVALID_CONTACT;
     }
     if (wcslen(request->name) >= READER_NAME_CAPACITY ||
         wcslen(request->contact) >= READER_CONTACT_CAPACITY) {

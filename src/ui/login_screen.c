@@ -5,6 +5,7 @@
 
 #include "ui/screen.h"
 #include "ui/widget.h"
+#include "ui/text_edit.h"
 
 typedef struct {
     UiRect panel;
@@ -61,7 +62,7 @@ static bool get_login_layout(
     return true;
 }
 
-static void append_character(LoginForm *form, wchar_t character) {
+static void edit_character(LoginForm *form, const UiEvent *event) {
     wchar_t *buffer = form->active_field == LOGIN_FIELD_USERNAME
         ? form->username
         : form->password;
@@ -72,28 +73,15 @@ static void append_character(LoginForm *form, wchar_t character) {
         ? LOGIN_USERNAME_CAPACITY
         : LOGIN_PASSWORD_CAPACITY;
 
-    if (*length + 1 >= capacity) {
+    if (event->key == UI_KEY_CHARACTER && *length + 1 >= capacity) {
         login_form_set_message(form, L"输入内容已达到最大长度。", true);
         return;
     }
 
-    buffer[(*length)++] = character;
-    buffer[*length] = L'\0';
-    form->message[0] = L'\0';
-}
-
-static void remove_character(LoginForm *form) {
-    wchar_t *buffer = form->active_field == LOGIN_FIELD_USERNAME
-        ? form->username
-        : form->password;
-    size_t *length = form->active_field == LOGIN_FIELD_USERNAME
-        ? &form->username_length
-        : &form->password_length;
-
-    if (*length > 0) {
-        buffer[--(*length)] = L'\0';
+    if (text_edit_handle(buffer, capacity, length,
+            &form->carets[form->active_field], event)) {
+        form->message[0] = L'\0';
     }
-    form->message[0] = L'\0';
 }
 
 void login_form_init(LoginForm *form) {
@@ -110,6 +98,7 @@ void login_form_clear_password(LoginForm *form) {
     }
     memset(form->password, 0, sizeof(form->password));
     form->password_length = 0;
+    form->carets[LOGIN_FIELD_PASSWORD] = 0;
     form->active_field = LOGIN_FIELD_PASSWORD;
 }
 
@@ -137,7 +126,7 @@ void login_screen_draw(const Console *console, const LoginForm *form) {
         console,
         L"宇宙图书馆管理系统",
         L" 用户登录 ",
-        L"左键选择输入框/按钮  |  Tab 切换  |  Enter 登录  |  右键返回"
+        L"Tab 切换  左右/Home/End 移动光标  Delete 删除  Enter 登录  Esc 返回"
     );
 
     if (!get_login_layout(console, &layout)) {
@@ -161,13 +150,15 @@ void login_screen_draw(const Console *console, const LoginForm *form) {
         CONSOLE_COLOR_WHITE, CONSOLE_COLOR_BLACK
     );
 
-    widget_draw_input(
+    widget_draw_input_at_caret(
         console, &layout.username, form->username, false,
-        form->active_field == LOGIN_FIELD_USERNAME
+        form->active_field == LOGIN_FIELD_USERNAME,
+        form->carets[LOGIN_FIELD_USERNAME]
     );
-    widget_draw_input(
+    widget_draw_input_at_caret(
         console, &layout.password, form->password, true,
-        form->active_field == LOGIN_FIELD_PASSWORD
+        form->active_field == LOGIN_FIELD_PASSWORD,
+        form->carets[LOGIN_FIELD_PASSWORD]
     );
     widget_draw_button(console, &layout.submit, L"登录", false);
     widget_draw_button(console, &layout.back, L"返回", false);
@@ -208,10 +199,13 @@ LoginAction login_screen_handle_event(
             case UI_KEY_ESCAPE:
                 return LOGIN_ACTION_BACK;
             case UI_KEY_BACKSPACE:
-                remove_character(form);
-                break;
+            case UI_KEY_DELETE:
+            case UI_KEY_LEFT:
+            case UI_KEY_RIGHT:
+            case UI_KEY_HOME:
+            case UI_KEY_END:
             case UI_KEY_CHARACTER:
-                append_character(form, event->character);
+                edit_character(form, event);
                 break;
             default:
                 break;

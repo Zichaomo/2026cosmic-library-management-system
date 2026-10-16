@@ -54,6 +54,30 @@ int main(void) {
         L"reader123",
         L"13800138000"
     };
+    ReaderRegistrationRequest invalid_contact = registration;
+    invalid_contact.contact = L"138001380003";
+    check(auth_register_reader(&readers, &invalid_contact) ==
+        REGISTER_RESULT_INVALID_CONTACT && readers.count == 0,
+        "reject twelve-digit phone without saving account");
+    invalid_contact.contact = L"15303347256.";
+    check(auth_register_reader(&readers, &invalid_contact) ==
+        REGISTER_RESULT_INVALID_CONTACT && readers.count == 0,
+        "reject trailing punctuation in phone");
+    invalid_contact.contact = L"12800138000";
+    check(auth_register_reader(&readers, &invalid_contact) ==
+        REGISTER_RESULT_INVALID_CONTACT && readers.count == 0,
+        "reject invalid mainland mobile prefix");
+    check(!auth_mobile_number_is_valid(L"13800A38000") &&
+        !auth_mobile_number_is_valid(L"１３８００１３８０００") &&
+        !auth_mobile_number_is_valid(L"1380013800") &&
+        !auth_mobile_number_is_valid(NULL) &&
+        auth_mobile_number_is_valid(L"19900138000"),
+        "phone validation accepts only eleven ASCII digits with valid prefix");
+    ReaderRegistrationRequest reserved_account = registration;
+    reserved_account.reader_no = L"admin";
+    check(auth_register_reader(&readers, &reserved_account) ==
+        REGISTER_RESULT_DUPLICATE_READER_NO && readers.count == 0,
+        "admin account is reserved and cannot register as reader");
     check(
         auth_register_reader(&readers, &registration) ==
             REGISTER_RESULT_SUCCESS,

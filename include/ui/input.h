@@ -28,6 +28,7 @@ typedef enum {
     UI_KEY_ENTER,
     UI_KEY_ESCAPE,
     UI_KEY_BACKSPACE,
+    UI_KEY_DELETE,
     UI_KEY_UP,
     UI_KEY_DOWN,
     UI_KEY_LEFT,

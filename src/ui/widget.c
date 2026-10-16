@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <wchar.h>
+#include "ui/text_edit.h"
 
 bool widget_contains_point(const UiRect *rect, short x, short y) {
     return rect != NULL && x >= rect->x && y >= rect->y &&
@@ -102,6 +103,55 @@ void widget_draw_input(
     bool password,
     bool focused
 ) {
+    widget_draw_input_at_caret(console, rect, value, password, focused,
+        value != NULL ? wcslen(value) : 0);
+}
+
+static int input_character_width(const wchar_t *value, size_t position,
+    bool password) {
+    return password ? 1 : (value[position] <= 0x7f ? 1 : 2);
+}
+
+size_t widget_input_view_start(const wchar_t *value, bool password,
+    size_t caret, short columns) {
+    if (value == NULL || columns <= 0) return 0;
+    const size_t length = wcslen(value);
+    if (caret > length) caret = length;
+    int width = 0;
+    size_t start = 0;
+    for (size_t i = 0; i < caret; i = text_edit_next(value, i)) {
+        width += input_character_width(value, i, password);
+    }
+    /* Reserve one terminal cell for the non-blinking vertical caret. */
+    while (start < caret && width >= columns) {
+        width -= input_character_width(value, start, password);
+        start = text_edit_next(value, start);
+    }
+    return start;
+}
+
+size_t widget_input_caret_from_click(const UiRect *rect, const wchar_t *value,
+    bool password, size_t caret, short x) {
+    if (rect == NULL || value == NULL) return 0;
+    size_t index = widget_input_view_start(value, password, caret,
+        (short)(rect->width - 3));
+    int cell = rect->x + 2;
+    while (value[index] != L'\0') {
+        if (index == caret) {
+            if (x <= cell) return index;
+            ++cell;
+        }
+        const int width = input_character_width(value, index, password);
+        if (x < cell + width) return index;
+        cell += width;
+        index = text_edit_next(value, index);
+        if (cell >= rect->x + rect->width - 1) break;
+    }
+    return index;
+}
+
+void widget_draw_input_at_caret(const Console *console, const UiRect *rect,
+    const wchar_t *value, bool password, bool focused, size_t caret) {
     enum { DISPLAY_CAPACITY = 128 };
     wchar_t display[DISPLAY_CAPACITY];
 
@@ -119,24 +169,31 @@ void widget_draw_input(
     );
     widget_draw_box(console, rect, border);
 
-    size_t length = wcslen(value);
-    const size_t max_visible = (size_t)(rect->width - 3);
-    if (length > max_visible) {
-        value += length - max_visible;
-        length = max_visible;
+    const size_t length = wcslen(value);
+    if (caret > length) caret = length;
+    size_t index = focused ? widget_input_view_start(value, password, caret,
+        (short)(rect->width - 3)) : 0;
+    size_t used = 0;
+    int cells = 0;
+    const int max_visible = rect->width - 3;
+    while (used < DISPLAY_CAPACITY - 1 && cells < max_visible) {
+        if (focused && index == caret) {
+            display[used++] = L'│';
+            ++cells;
+        }
+        if (value[index] == L'\0') break;
+        const size_t next = text_edit_next(value, index);
+        const int width = input_character_width(value, index, password);
+        if (cells + width > max_visible ||
+            used + (password ? 1 : next - index) >= DISPLAY_CAPACITY) break;
+        if (password) display[used++] = L'*';
+        else {
+            for (size_t i = index; i < next; ++i) display[used++] = value[i];
+        }
+        cells += width;
+        index = next;
     }
-    if (length >= DISPLAY_CAPACITY) {
-        length = DISPLAY_CAPACITY - 1;
-    }
-
-    for (size_t index = 0; index < length; ++index) {
-        display[index] = password ? L'*' : value[index];
-    }
-    if (focused && length < DISPLAY_CAPACITY - 1 &&
-        length < max_visible) {
-        display[length++] = L'_';
-    }
-    display[length] = L'\0';
+    display[used] = L'\0';
 
     console_write_at(
         console, (short)(rect->x + 2), (short)(rect->y + 1), display,

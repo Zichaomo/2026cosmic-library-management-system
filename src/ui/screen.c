@@ -90,8 +90,8 @@ void screen_draw_title_bar(
             CONSOLE_COLOR_CYAN, CONSOLE_COLOR_DARK_BLUE
         );
         console_write_at(
-            console, (short)(layout->width - 15), layout->title_y,
-            L"FINAL  v1.0.0",
+            console, (short)(layout->width - 9), layout->title_y,
+            L"v1.0.0",
             CONSOLE_COLOR_YELLOW, CONSOLE_COLOR_DARK_BLUE
         );
     }

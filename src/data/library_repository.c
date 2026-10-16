@@ -123,8 +123,17 @@ static time_t parse_end_of_date(const char *text) {
     int year = 0;
     int month = 0;
     int day = 0;
-    if (text == NULL || sscanf(text, "%d-%d-%d", &year, &month, &day) != 3) {
+    char extra = '\0';
+    if (text == NULL || strlen(text) != 10 || text[4] != '-' ||
+        text[7] != '-' ||
+        sscanf(text, "%d-%d-%d%c", &year, &month, &day, &extra) != 3 ||
+        year < 1970 || month < 1 || month > 12 || day < 1 || day > 31) {
         return (time_t)-1;
+    }
+    for (int i = 0; i < 10; ++i) {
+        if (i != 4 && i != 7 && (text[i] < '0' || text[i] > '9')) {
+            return (time_t)-1;
+        }
     }
     struct tm value;
     memset(&value, 0, sizeof(value));
@@ -135,7 +144,11 @@ static time_t parse_end_of_date(const char *text) {
     value.tm_min = 59;
     value.tm_sec = 59;
     value.tm_isdst = -1;
-    return mktime(&value);
+    const time_t result = mktime(&value);
+    /* mktime normalizes impossible dates; reject them instead. */
+    if (result == (time_t)-1 || value.tm_year != year - 1900 ||
+        value.tm_mon != month - 1 || value.tm_mday != day) return (time_t)-1;
+    return result;
 }
 
 static bool add_days_to_date(
@@ -993,7 +1006,7 @@ int library_reader_unpaid_fine_cents(
 }
 
 bool library_loan_is_overdue(const Loan *loan, time_t now) {
-    if (loan == NULL || loan->status != LOAN_STATUS_ACTIVE) {
+    if (loan == NULL || loan->status != LOAN_STATUS_ACTIVE || now == (time_t)-1) {
         return false;
     }
     const time_t due = parse_end_of_date(loan->due_date);
@@ -1005,8 +1018,18 @@ int library_loan_overdue_days(const Loan *loan, time_t now) {
         return 0;
     }
     const time_t due = parse_end_of_date(loan->due_date);
-    const double seconds = difftime(now, due);
-    return (int)(seconds / 86400.0) + 1;
+    struct tm due_date;
+    struct tm today;
+    if (localtime_s(&due_date, &due) != 0 ||
+        localtime_s(&today, &now) != 0) return 0;
+    /* Count local calendar dates, not elapsed 24-hour periods. */
+    const int due_year = due_date.tm_year + 1899;
+    const int now_year = today.tm_year + 1899;
+    const int due_day = 365 * due_year + due_year / 4 - due_year / 100 +
+        due_year / 400 + due_date.tm_yday;
+    const int now_day = 365 * now_year + now_year / 4 - now_year / 100 +
+        now_year / 400 + today.tm_yday;
+    return now_day - due_day;
 }
 
 static LibraryResult borrow_book_at_unlocked(
@@ -1357,8 +1380,9 @@ static LibraryResult mark_loan_overdue_for_demo_unlocked(
         return LIBRARY_RESULT_LOAN_RETURNED;
     }
     const Loan old_loan = *loan;
-    const time_t simulated_due = time(NULL) - (time_t)overdue_days * 86400;
-    if (!format_date(simulated_due, loan->due_date) ||
+    char today[LIBRARY_DATE_CAPACITY];
+    if (!format_date(time(NULL), today) ||
+        !add_days_to_date(today, -overdue_days, loan->due_date) ||
         !save_loans(repository)) {
         *loan = old_loan;
         return LIBRARY_RESULT_STORAGE_ERROR;

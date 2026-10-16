@@ -7,6 +7,7 @@
 #include "data/reader_repository.h"
 #include "ui/console.h"
 #include "ui/input.h"
+#include "ui/widget.h"
 
 enum {
     REGISTER_PASSWORD_CAPACITY = 32,
@@ -29,6 +30,7 @@ typedef struct {
     wchar_t password_confirmation[REGISTER_PASSWORD_CAPACITY];
     wchar_t contact[READER_CONTACT_CAPACITY];
     size_t lengths[REGISTER_FIELD_COUNT];
+    size_t carets[REGISTER_FIELD_COUNT];
     RegisterField active_field;
     wchar_t message[REGISTER_MESSAGE_CAPACITY];
     bool message_is_error;
@@ -41,6 +43,7 @@ typedef enum {
 } RegisterAction;
 
 void register_form_init(RegisterForm *form);
+void register_form_place_caret(RegisterForm *form, const UiRect *rect, short x);
 void register_form_set_message(
     RegisterForm *form,
     const wchar_t *message,

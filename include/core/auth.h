@@ -37,6 +37,7 @@ typedef enum {
     REGISTER_RESULT_SUCCESS = 0,
     REGISTER_RESULT_EMPTY_FIELD,
     REGISTER_RESULT_INVALID_READER_NO,
+    REGISTER_RESULT_INVALID_CONTACT,
     REGISTER_RESULT_WEAK_PASSWORD,
     REGISTER_RESULT_PASSWORD_MISMATCH,
     REGISTER_RESULT_DUPLICATE_READER_NO,
@@ -44,6 +45,7 @@ typedef enum {
 } RegisterResult;
 
 void auth_session_clear(UserSession *session);
+bool auth_mobile_number_is_valid(const wchar_t *contact);
 AuthResult auth_login(
     const ReaderRepository *readers,
     const wchar_t *username,

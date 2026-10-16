@@ -69,6 +69,10 @@ bool console_init(Console *console) {
     console->has_output_mode = GetConsoleMode(
         console->output, &console->original_output_mode
     ) != 0;
+    if (console->has_output_mode) {
+        SetConsoleMode(console->output,
+            console->original_output_mode & ~ENABLE_WRAP_AT_EOL_OUTPUT);
+    }
 
     CONSOLE_SCREEN_BUFFER_INFO screen_info;
     if (console->has_output_mode && GetConsoleScreenBufferInfo(
@@ -183,12 +187,20 @@ void console_write_at(
         (short)(viewport.Top + y)
     };
     DWORD written = 0;
-    size_t length = wcslen(text);
-    const size_t remaining = (size_t)(width - x);
-    if (length > remaining) {
-        length = remaining;
+    size_t length = 0;
+    int cells = 0;
+    const int remaining = width - x;
+    while (text[length] != L'\0') {
+        const wchar_t character = text[length];
+        const bool pair = character >= 0xd800 && character <= 0xdbff &&
+            text[length + 1] >= 0xdc00 && text[length + 1] <= 0xdfff;
+        const int cell_width = character <= 0x7f ||
+            (character >= 0x2500 && character <= 0x257f) ? 1 : 2;
+        if (cells + cell_width > remaining) break;
+        cells += cell_width;
+        length += pair ? 2 : 1;
     }
-
+    /* Position-based output avoids wrapping/scrolling at the status bar. */
     SetConsoleTextAttribute(
         console->output, make_attributes(foreground, background)
     );

@@ -46,9 +46,51 @@ static void clean_test_data(void) {
     RemoveDirectoryW(L"tests\\tmp_circulation");
 }
 
+static time_t date_at(int year, int month, int day, int hour, int minute, int second) {
+    struct tm value = {0};
+    value.tm_year = year - 1900;
+    value.tm_mon = month - 1;
+    value.tm_mday = day;
+    value.tm_hour = hour;
+    value.tm_min = minute;
+    value.tm_sec = second;
+    value.tm_isdst = -1;
+    return mktime(&value);
+}
+
+static void test_overdue_boundaries(void) {
+    Loan loan = {0};
+    loan.status = LOAN_STATUS_ACTIVE;
+    strcpy(loan.due_date, "2026-10-09");
+    check(!library_loan_is_overdue(&loan, date_at(2026, 10, 9, 23, 59, 59)),
+        "due date remains valid until 23:59:59");
+    check(library_loan_overdue_days(&loan, date_at(2026, 10, 10, 0, 0, 0)) == 1,
+        "first second after midnight is exactly one overdue day");
+    check(library_loan_overdue_days(&loan, date_at(2026, 10, 10, 23, 59, 59)) == 1,
+        "end of first overdue day does not charge a second day");
+    check(library_loan_overdue_days(&loan, date_at(2026, 10, 12, 23, 59, 59)) == 3,
+        "three calendar dates late are exactly three overdue days");
+    loan.status = LOAN_STATUS_RETURNED;
+    check(!library_loan_is_overdue(&loan, local_date(2026, 10, 12)) &&
+        library_loan_overdue_days(&loan, local_date(2026, 10, 12)) == 0,
+        "returned loans never remain overdue");
+    loan.status = LOAN_STATUS_ACTIVE;
+    strcpy(loan.due_date, "2026-02-30");
+    check(!library_loan_is_overdue(&loan, local_date(2026, 3, 3)),
+        "impossible date is not silently normalized");
+    strcpy(loan.due_date, "2024-02-28");
+    check(library_loan_overdue_days(&loan, local_date(2024, 3, 1)) == 2,
+        "leap-year overdue count includes February 29");
+    strcpy(loan.due_date, "2025-12-31");
+    check(library_loan_overdue_days(&loan, local_date(2026, 1, 1)) == 1,
+        "overdue calculation works across year boundary");
+}
+
 int main(void) {
     SetConsoleOutputCP(CP_UTF8);
     clean_test_data();
+
+    test_overdue_boundaries();
 
     ReaderRepository readers;
     LibraryRepository library;
@@ -226,13 +268,13 @@ int main(void) {
         "create one-copy book for reservation queue"
     );
     const ReaderRegistrationRequest reader_two_request = {
-        L"reserve-2", L"预约读者二", L"reader123", L"reader123", L"10002"
+        L"reserve-2", L"预约读者二", L"reader123", L"reader123", L"13800138002"
     };
     const ReaderRegistrationRequest reader_three_request = {
-        L"reserve-3", L"预约读者三", L"reader123", L"reader123", L"10003"
+        L"reserve-3", L"预约读者三", L"reader123", L"reader123", L"13800138003"
     };
     const ReaderRegistrationRequest reader_four_request = {
-        L"reserve-4", L"预约读者四", L"reader123", L"reader123", L"10004"
+        L"reserve-4", L"预约读者四", L"reader123", L"reader123", L"13800138004"
     };
     check(
         auth_register_reader(&readers, &reader_two_request) ==
@@ -410,10 +452,10 @@ int main(void) {
         "open a second terminal reader repository"
     );
     const ReaderRegistrationRequest shared_reader_one = {
-        L"shared-reader-1", L"同步读者一", L"reader123", L"reader123", L"20001"
+        L"shared-reader-1", L"同步读者一", L"reader123", L"reader123", L"13800138005"
     };
     const ReaderRegistrationRequest shared_reader_two = {
-        L"shared-reader-2", L"同步读者二", L"reader123", L"reader123", L"20002"
+        L"shared-reader-2", L"同步读者二", L"reader123", L"reader123", L"13800138006"
     };
     check(
         auth_register_reader(&readers, &shared_reader_one) ==
@@ -434,6 +476,27 @@ int main(void) {
         )->id,
         "registrations from two terminals do not overwrite each other"
     );
+
+    int midnight_loan = 0;
+    check(library_borrow_book_at(&library, &readers, reader_id, shared_book_id,
+        local_date(2026, 8, 1), &midnight_loan) == LIBRARY_RESULT_SUCCESS,
+        "prepare overdue settlement boundary loan");
+    const size_t previous_fines = library.fine_count;
+    int midnight_fine = 0;
+    check(library_return_loan_at(&library, midnight_loan,
+        date_at(2026, 9, 1, 23, 59, 59), &midnight_fine) == LIBRARY_RESULT_SUCCESS &&
+        midnight_fine == 50 && library.fine_count == previous_fines + 1,
+        "first overdue day at 23:59:59 charges exactly fifty cents");
+    check(library_return_loan_at(&library, midnight_loan,
+        local_date(2026, 9, 2), NULL) == LIBRARY_RESULT_LOAN_RETURNED &&
+        library.fine_count == previous_fines + 1,
+        "repeat return cannot create duplicate fine");
+    const int final_fine_id = library.fines[library.fine_count - 1].id;
+    check(library_pay_fine_at(&library, final_fine_id,
+        local_date(2026, 9, 2)) == LIBRARY_RESULT_SUCCESS &&
+        library_pay_fine_at(&library, final_fine_id,
+        local_date(2026, 9, 2)) == LIBRARY_RESULT_FINE_PAID,
+        "repeat payment cannot charge twice");
 
     reader_repository_dispose(&second_readers);
     library_repository_dispose(&second_library);

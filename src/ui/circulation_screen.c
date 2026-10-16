@@ -182,8 +182,15 @@ void circulation_screen_draw_reader_loans(
         const Book *book = loan_book(library, loan);
         const bool overdue = library_loan_is_overdue(loan, time(NULL));
         wchar_t row[180];
-        const wchar_t *state = loan->status == LOAN_STATUS_RETURNED
-            ? L"已还" : (overdue ? L"逾期" : (loan->renew_count ? L"已续借" : L"借出"));
+        wchar_t state[48];
+        if (overdue) {
+            const int days = library_loan_overdue_days(loan, time(NULL));
+            swprintf(state, 48, L"逾期%d天/还书结算%.2f元", days,
+                days * LIBRARY_FINE_PER_DAY_CENTS / 100.0);
+        } else {
+            wcscpy(state, loan->status == LOAN_STATUS_RETURNED
+                ? L"已还" : (loan->renew_count ? L"已续借" : L"借出"));
+        }
         swprintf(
             row, 180, L"单号%d  %.14ls  |  %hs 至 %hs  |  %ls",
             loan->id, book != NULL ? book->title : L"未知图书",
@@ -357,7 +364,7 @@ void circulation_screen_draw_admin_loans(
     ScreenLayout layout;
     screen_draw_shell(
         console, L"宇宙图书馆管理系统", L" 借阅管理 ",
-        L"左键/滚轮选择  双击还书  B 借书  O 逾期  右键返回"
+        L"Enter/双击还书  B 借书  O 模拟逾期3天（修改应还日）  Esc 返回"
     );
     if (!screen_get_layout(console, &layout)) {
         return;
@@ -376,12 +383,17 @@ void circulation_screen_draw_admin_loans(
         const Book *book = loan_book(library, loan);
         const bool overdue = library_loan_is_overdue(loan, time(NULL));
         wchar_t row[180];
+        wchar_t state[48];
+        if (overdue) {
+            const int days = library_loan_overdue_days(loan, time(NULL));
+            swprintf(state, 48, L"逾期%d天/待结算%.2f元", days,
+                days * LIBRARY_FINE_PER_DAY_CENTS / 100.0);
+        } else wcscpy(state, loan->status == LOAN_STATUS_RETURNED ? L"已还" : L"借出");
         swprintf(
             row, 180, L"单号%d  %.12ls  %.12ls  |  应还 %hs  |  %ls",
             loan->id, reader_number_by_id(readers, loan->reader_id),
             book != NULL ? book->title : L"未知图书", loan->due_date,
-            loan->status == LOAN_STATUS_RETURNED ? L"已还" :
-                (overdue ? L"逾期" : L"借出")
+            state
         );
         draw_row(
             console, &layout,

@@ -13,4 +13,8 @@ Makefile text eol=lf
 *.zip binary
 
 # Preserve archived reference bytes for manifest verification.
-legacy/** -text
+legacy/** -text whitespace=cr-at-eol
+
+# Fixed-width grid exports require trailing cells; ANSI exports preserve bytes.
+docs/design/*.txt -whitespace
+*.ans -text -diff

@@ -1,14 +1,13 @@
 {
     "configurations": [
         {
-            "name": "Win32-GCC",
-            "compilerPath": "C:/Users/xyt20/AppData/Local/Microsoft/WinGet/Packages/BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe/mingw64/bin/gcc.exe",
+            "name": "Windows-GCC",
+            "compilerPath": "gcc.exe",
             "cStandard": "c11",
-            "cppStandard": "c++17",
             "intelliSenseMode": "windows-gcc-x64",
             "includePath": [
                 "${workspaceFolder}/include",
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/tools/preview"
             ]
         }
     ],

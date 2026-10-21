@@ -4,15 +4,17 @@
         {
             "label": "C: build project",
             "type": "shell",
-            "command": "mingw32-make",
+            "command": "powershell.exe",
             "args": [
-                "all"
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "tools/run-library.ps1",
+                "-BuildOnly"
             ],
             "options": {
-                "cwd": "${workspaceFolder}",
-                "env": {
-                    "PATH": "${env:LOCALAPPDATA}\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin;${env:PATH}"
-                }
+                "cwd": "${workspaceFolder}"
             },
             "problemMatcher": [
                 "$gcc"
@@ -23,22 +25,41 @@
             }
         },
         {
-            "label": "C: run authentication tests",
+            "label": "C: run all tests",
             "type": "shell",
-            "command": "mingw32-make",
+            "command": "powershell.exe",
             "args": [
-                "test"
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "tools/test-all.ps1"
             ],
             "options": {
-                "cwd": "${workspaceFolder}",
-                "env": {
-                    "PATH": "${env:LOCALAPPDATA}\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin;${env:PATH}"
-                }
+                "cwd": "${workspaceFolder}"
             },
             "problemMatcher": [
                 "$gcc"
             ],
             "group": "test"
+        },
+        {
+            "label": "C: run library",
+            "type": "shell",
+            "command": "powershell.exe",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "tools/run-library.ps1"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
         }
     ]
 }

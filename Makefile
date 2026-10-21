@@ -1,46 +1,29 @@
-CC := gcc
-CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -g -Iinclude
-LDLIBS := -lbcrypt
-TARGET := build/library.exe
-SOURCES := $(wildcard src/*.c src/ui/*.c src/core/*.c src/data/*.c src/utils/*.c)
-AUTH_TEST_TARGET := build/auth_tests.exe
-AUTH_TEST_SOURCES := tests/test_auth.c src/core/auth.c src/data/csv.c \
-	src/data/reader_repository.c src/utils/hash.c src/utils/text.c
-CIRCULATION_TEST_TARGET := build/circulation_tests.exe
-CIRCULATION_TEST_SOURCES := tests/test_circulation.c src/core/auth.c \
-	src/data/csv.c src/data/reader_repository.c \
-	src/data/library_repository.c src/utils/hash.c src/utils/text.c
-UI_TEST_TARGET := build/ui_tests.exe
-UI_TEST_SOURCES := tests/test_ui.c $(filter-out src/main.c,$(SOURCES))
-HEADERS := $(wildcard include/*.h include/ui/*.h include/core/*.h include/data/*.h include/utils/*.h)
-
-.PHONY: all run test clean
-
-all: $(TARGET)
-
-$(TARGET): $(SOURCES) $(HEADERS)
-	@if not exist build mkdir build
-	$(CC) $(CFLAGS) $(SOURCES) -o $(TARGET) $(LDLIBS)
-
-run: all
-	$(TARGET)
-
-test: $(AUTH_TEST_TARGET) $(CIRCULATION_TEST_TARGET) $(UI_TEST_TARGET)
-	$(AUTH_TEST_TARGET)
-	$(CIRCULATION_TEST_TARGET)
-	$(UI_TEST_TARGET)
-
-$(AUTH_TEST_TARGET): $(AUTH_TEST_SOURCES) $(HEADERS)
-	@if not exist build mkdir build
-	$(CC) $(CFLAGS) $(AUTH_TEST_SOURCES) -o $(AUTH_TEST_TARGET) $(LDLIBS)
-
-$(CIRCULATION_TEST_TARGET): $(CIRCULATION_TEST_SOURCES) $(HEADERS)
-	@if not exist build mkdir build
-	$(CC) $(CFLAGS) $(CIRCULATION_TEST_SOURCES) -o $(CIRCULATION_TEST_TARGET) $(LDLIBS)
-
-$(UI_TEST_TARGET): $(UI_TEST_SOURCES) $(HEADERS)
-	@if not exist build mkdir build
-	$(CC) $(CFLAGS) $(UI_TEST_SOURCES) -o $(UI_TEST_TARGET) $(LDLIBS)
-
+SHELL := cmd.exe
+.SHELLFLAGS := /D /C
+.PHONY: all run migrated run-migrated test test-foundation test-migration test-application test-preview audit test-legacy clean
+all:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/run-library.ps1 -BuildOnly
+run:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/run-library.ps1
+migrated: all
+run-migrated: run
+test:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/test-all.ps1
+test-foundation:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/test-foundation.ps1
+test-migration:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/test-migration.ps1
+test-application:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/test-application.ps1
+test-preview:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/preview/run-preview.ps1 -Test
+audit:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/audit-source.ps1
+.PHONY: test-concurrency
+test-concurrency:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/test-concurrency.ps1
+test-legacy:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/test-legacy.ps1
+# build/ contains persistent user datasets. Never recursively delete it.
 clean:
-	@if exist build rmdir /S /Q build
+	@echo Persistent data retained. Remove individual unused executable files manually.

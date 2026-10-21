@@ -60,3 +60,11 @@ Desktop.ini
 
 # 为查看和运行历史版本创建的本地工程副本
 /宇宙图书馆-v*/
+
+# 新仓储的运行时提交快照
+/data/state.0
+/data/state.1
+
+# Python tooling caches
+__pycache__/
+*.py[cod]

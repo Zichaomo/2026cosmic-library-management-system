@@ -1,0 +1,174 @@
+{
+  "include/app.h": {
+    "git_blob": "cf82b5e451d80493557e61690cf4f189898136c0",
+    "sha256": "ca3012224b2b0f729baf6ae1e7433fab194f0432418c07475e9526d54d62a2c0"
+  },
+  "include/core/auth.h": {
+    "git_blob": "7f2db5bc90e8663c8b4375e7210e5723b441fddf",
+    "sha256": "9e478fabcbf434f13818377b39554ba16c36938c13c31bb24feee914c4b011c6"
+  },
+  "include/data/csv.h": {
+    "git_blob": "dbf76b656ab16ea3128279215b288b36fe2b4d0b",
+    "sha256": "d07282cc07846fea34ac7482261c65853e297fab220c1328b804cf1d4324e6db"
+  },
+  "include/data/library_repository.h": {
+    "git_blob": "d21485f8a6c6fcc41e0cdeebffaf796d4933f564",
+    "sha256": "ead245bc329e124824e9f377559f8f6ce118675ef33d0541522bb92aeba1eb89"
+  },
+  "include/data/reader_repository.h": {
+    "git_blob": "92a54515d2f6312346e1a0af6c5bba94d80ed7e8",
+    "sha256": "cc15e0a83388b51afae92f052b60a6e6ee72274ea38a99f1a30181409a71b202"
+  },
+  "include/ui/admin_screen.h": {
+    "git_blob": "a6ec8775c75897ae2c772ea0279ffd3e4ef7b045",
+    "sha256": "d363a1a034cd09db8eaf8f63b56160676cb701bd963329578b67e17e72af7df7"
+  },
+  "include/ui/circulation_screen.h": {
+    "git_blob": "545b74166025d206f455d6276f60f354aeb56335",
+    "sha256": "b9adc078412c7ee18a1c8d1f7c83b3770b87166a0554c4b561200e6c7d935990"
+  },
+  "include/ui/console.h": {
+    "git_blob": "55b01399b6a093d648cc325c09c366cd643fdc24",
+    "sha256": "026d5dea330dcee1f938583a3554c14ac1818567518f72d0825ee195cb93bcc5"
+  },
+  "include/ui/home_screen.h": {
+    "git_blob": "102ce84163df563477e921f91318b9613370edf2",
+    "sha256": "a0afa732dbb6f61381d866265ca1702903c52cea7fe933eeaef3814f6380f4f8"
+  },
+  "include/ui/input.h": {
+    "git_blob": "4f8740a0463d53bd74f9296249030bd44a2bd576",
+    "sha256": "31185e56acf88369eebbc1e5368623bf61463096474bfd0aa62cf8414a4bdbad"
+  },
+  "include/ui/login_screen.h": {
+    "git_blob": "23cc2cb504bc2699d1892af3c22c87d1bba0216e",
+    "sha256": "6d2a285de616d4aa0a7502bcaf82266f573323b99830bca3ba772b6627292c95"
+  },
+  "include/ui/register_screen.h": {
+    "git_blob": "dd03deeb58bbc632368da93432e06cc44194b883",
+    "sha256": "958aae8cfff629b61309930af2bc73cb9a84b3737d62ecaa26a6808c4258d2dd"
+  },
+  "include/ui/screen.h": {
+    "git_blob": "cccebb73bde8368e876804ca31a02d850e56b5d4",
+    "sha256": "2f8131e64beea5053933908f306940a04c0ca07b43131679801f1ebc2f256435"
+  },
+  "include/ui/text_edit.h": {
+    "git_blob": "a8576cbf1a8e9fd23a20dc777dd92a6fb45795f3",
+    "sha256": "fbe548381e0a6aeaa3a6b71d1cee0aafdf06fc88a92614c3e4f208913846a384"
+  },
+  "include/ui/widget.h": {
+    "git_blob": "2370a638b63599255dddf095a16753cdbc57ef7e",
+    "sha256": "6687b95447083482e7aa553cace2b506dc987036da8d327c513f076c22ccf37f"
+  },
+  "include/utils/hash.h": {
+    "git_blob": "1795e31dcecb9225750f8a5a3eae3cd78e4b37c2",
+    "sha256": "37b7aa354d2919b2c340a0073a5ce5b2da822ebad61d22e73cfebd33214c7ba9"
+  },
+  "include/utils/text.h": {
+    "git_blob": "bf92f4a0535a3fa575f7487fed4049bb192c2935",
+    "sha256": "8095a2d0d66e35e5713e2fc04dd8c87c5f674fc493f48b67a8e95ef8ee97f66b"
+  },
+  "src/app.c": {
+    "git_blob": "881b270c2083b3bc93b283c7c3675ac3eb032fa6",
+    "sha256": "0b28039de6f63cf0e473a879c588bde6a1c12fec2c5fc5fdb5108b5de5b5f436"
+  },
+  "src/core/auth.c": {
+    "git_blob": "b70756a53292816824b1a0aaf30856e45a0a8c8a",
+    "sha256": "abe60c6dcd3cc39b3868d1db324a621ab892f39e3ab075afc0317d225f2c7235"
+  },
+  "src/data/csv.c": {
+    "git_blob": "b05c72cdab62b940af5a309540b9afd2fdd9c170",
+    "sha256": "87ccee253ecfff411edf4f6c1a152c6f5c52029581a26c4ba7e6c61e9f72d871"
+  },
+  "src/data/library_repository.c": {
+    "git_blob": "bdce2a311412fa5c762b2c9a8950aeab08665255",
+    "sha256": "7ab1f7cb39d0af8a7b3e53604ef6ae58703e5a6a42c4c06da89601a2efe0ca5d"
+  },
+  "src/data/reader_repository.c": {
+    "git_blob": "e699b52ff3abc11646546a31f8b5d150a2d4b5c3",
+    "sha256": "c68150265c5cee9caa8cf7b4dd479545c18d6e49215ee7949d1f45a817c1acd2"
+  },
+  "src/main.c": {
+    "git_blob": "4890d5bf6a3ce3f4e5706773a1d7e1a37b93b873",
+    "sha256": "7c0fdd102db10efcc4010510df4c907f5aa4de44dec72e4755ef26c0600f5d57"
+  },
+  "src/ui/admin_screen.c": {
+    "git_blob": "244dca3cba034c510e89c148bd0696cb79046888",
+    "sha256": "c34d2478c7b4720e7ef5f670f2d17ecbdf612d94e5085efe9e756c3d67c316ab"
+  },
+  "src/ui/circulation_screen.c": {
+    "git_blob": "01bbf1b1d9bd0555dba10458929eaf1299490be9",
+    "sha256": "920c2fa240959a0c1774ffdb9d028bffca426aa5f38f6afb6611980849fe6500"
+  },
+  "src/ui/console.c": {
+    "git_blob": "b592e4e5ee5624db8ed9ecf830f50c91cf4d9e94",
+    "sha256": "d6b9377f408ce476f920adc6eb5cfedaceade488ac28c23782b02fb669ad05fa"
+  },
+  "src/ui/home_screen.c": {
+    "git_blob": "874b359783c45b402ae200e9292f14e438f3d3ed",
+    "sha256": "351062f0509555ca5f2757f62735a3f9adcb3c4fb04fb99c1482b113f094455f"
+  },
+  "src/ui/input.c": {
+    "git_blob": "6289105277326a0b1bd35930bf22f4df37df0f2a",
+    "sha256": "43cbd70051fb783a7fc8327471b4e2f3dbbfa0aa3fade4425b64de97ea1133d7"
+  },
+  "src/ui/login_screen.c": {
+    "git_blob": "6346af277de34f8b2ea79bfcb9b8154ffbee254a",
+    "sha256": "f76300bf0211c93599c915ef08a67e76c9bd14b59309d3ff8e7b1b8da508e1cb"
+  },
+  "src/ui/register_screen.c": {
+    "git_blob": "452046cbcf66eeabefe0dfacd4a2259009acc204",
+    "sha256": "806f4709704ed7ab912238dd2ac1e2720212aba41fa5b48053374be776ed43a4"
+  },
+  "src/ui/screen.c": {
+    "git_blob": "b2292540b8b9478062041240b496c741bb1876ef",
+    "sha256": "a7a702a3d57045a65ae199f9ae60b66a2d1c4428fd5ce5fdf1e0c2a2132fa94e"
+  },
+  "src/ui/text_edit.c": {
+    "git_blob": "796b792520584179e0194198ebb5b746033fc054",
+    "sha256": "ba20939498d66db20638a3df3021f4d29ad51bb0be37de0033983f9ab88d2c1f"
+  },
+  "src/ui/widget.c": {
+    "git_blob": "ba2ab8fa10964dab84fd828db5d13c5b725185b0",
+    "sha256": "585c4c96fba8a400e8619250ddc61f30965b4beaa7aeeb0def84875cb6aa6646"
+  },
+  "src/utils/hash.c": {
+    "git_blob": "3021997589eb7a7978dbfe24a321d73545495d60",
+    "sha256": "7b90bd03b5827e5102b634f68be5fd9279bdb1cc90f5281e1937a9f08870dd55"
+  },
+  "src/utils/text.c": {
+    "git_blob": "fd9b8bcdabfa5679e5783603c048e75b72d0905e",
+    "sha256": "bc6b2fca7da1829bd85d321912db9f2744a5bf855b5433c454ad65e22e3986d5"
+  },
+  "tests/test_auth.c": {
+    "git_blob": "304864f229b3c7fb7ea98bd0d4a6cb53229f59f0",
+    "sha256": "700d3fa7236e2b7a23008b5b6265775dd25ae4307807569fabc09fcffe5e29b8"
+  },
+  "tests/test_circulation.c": {
+    "git_blob": "29193c401e55efa206ea79390022ad25c4f211c5",
+    "sha256": "47db0ac860c7b61700831657adafbb6eb0c6b4bac1710543d79663553e4a6d69"
+  },
+  "tests/test_ui.c": {
+    "git_blob": "de4dda67491ac7b98d5b312fd52072006c659cde",
+    "sha256": "0a298830aca85ae4243a5c4df99991a539c3315723acd9413463dac77cb4cf79"
+  },
+  "tools/demo/demo_session.c": {
+    "git_blob": "9f029690f3bac606b43b8a8ee36892f67e3cf1c5",
+    "sha256": "3c5ada0543ee1a53d974bcc3f0bfc27dd4745401765daa6f60282925cdb89a07"
+  },
+  "tools/demo/demo_session.h": {
+    "git_blob": "c2df5dc8197711664dfee9a0fd5fe6a45c9aaed7",
+    "sha256": "9a8e5a3d5c1b138068bd324a185ed42936ef888cac074cde973ebca0a56bf5df"
+  },
+  "tools/demo/main.c": {
+    "git_blob": "cc418ce5bf6256e9a458ab21d207b1417c0c7ce4",
+    "sha256": "1911e59c5043938d916de2684fe17c85c0321eb7b0cc1dcf20ac5aaa488a1bf2"
+  },
+  "tools/demo/README.md": {
+    "git_blob": "537bbc9b61b6d289cff159b3b41b7ca111816f4c",
+    "sha256": "59f41ebecfbd852293bfea3bb9362e727813fddb2dd785452a09060c2d69514a"
+  },
+  "tools/demo/test_session.c": {
+    "git_blob": "473b9e3d78fb737bdc7d73aad7c71b650e9f16a2",
+    "sha256": "1df7054340ae1a43f0d6b63ac7b1da3ada47d2c25ca7e9247d7a27601974806e"
+  }
+}

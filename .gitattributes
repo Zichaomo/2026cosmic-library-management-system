@@ -11,3 +11,6 @@ Makefile text eol=lf
 *.pptx binary
 *.docx binary
 *.zip binary
+
+# Preserve archived reference bytes for manifest verification.
+legacy/** -text

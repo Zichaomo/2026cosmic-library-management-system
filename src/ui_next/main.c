@@ -1,6 +1,26 @@
 #include "ui_next/app.h"
 #include <string.h>
 
+/* CONOUT$ is a Windows device filename, opened with textbook file functions.
+   Do not inherit stderr: shells/build tools may redirect it or give it a
+   non-writable handle. Closing each frame also flushes without fflush. */
+static int present(int force,int entering) {
+    FILE *screen=fopen("CONOUT$","wb");
+    if (!screen) return 0;
+    int ok=!entering || fputs("\033[?1049h",screen)!=EOF;
+    if (ok) ok=cl_terminal_draw(screen,force);
+    if (fclose(screen)) ok=0;
+    return ok;
+}
+static int restore_console(void) {
+    FILE *screen=fopen("CONOUT$","wb");
+    if (!screen) return 0;
+    cl_terminal_reset(screen);
+    int ok=fputs("\033[?1049l",screen)!=EOF && !ferror(screen);
+    if (fclose(screen)) ok=0;
+    return ok;
+}
+
 int main(int argc,char **argv) {
     const char *directory=NULL;int seed=0;
     for (int i=1;i<argc;++i) {
@@ -21,14 +41,17 @@ int main(int argc,char **argv) {
             cl_library_seed(&app.store,&admin,now.date)==CL_LIB_OK;
         cl_app_dispose(&app);return ok?0:4;
     }
-    fputs("\033[?1049h",stderr);cl_app_scene(&app);
-    int ok=cl_terminal_draw(stderr,1);
+    cl_app_scene(&app);
+    int ok=present(1,1);
     while (ok && app.running) {
         Event e=cl_terminal_event();if (e.key==KEY_NONE) continue;
         if (!cl_datetime_now(&now)) {text_copy(app.message,512,"错误：系统时间不可用，请退出后检查。");}
         else cl_app_event(&app,e,now.date);
         if (!app.running) break;
-        cl_app_scene(&app);ok=cl_terminal_draw(stderr,e.key==KEY_F5?1:2);
+        cl_app_scene(&app);ok=present(e.key==KEY_F5?1:2,0);
     }
-    cl_terminal_reset(stderr);fputs("\033[?1049l",stderr);cl_app_dispose(&app);return ok?0:1;
+    if (!restore_console()) ok=0;
+    cl_app_dispose(&app);
+    if (!ok) puts("Console output failed. Run in an interactive Windows terminal; data was not reset.");
+    return ok?0:1;
 }

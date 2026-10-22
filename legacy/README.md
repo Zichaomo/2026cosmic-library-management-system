@@ -4,6 +4,6 @@
 
 2026-10-21 从原 src/、include/、tests/、tools/demo/ 原样移动 43 个文件。manifest.json 记录原 Git blob 和原始字节 SHA-256；建立清单时已与 HEAD 逐一核对。不要修改这些参照文件。tools/audit_source.py 会复核其哈希。
 
-`make test-legacy` 编译旧认证、流通、UI 三套测试（91 项），在 build/legacy/run-*/ 的工作目录运行，不访问真实 data/。迁移测试另从此处编译旧仓储生成合成样本，再检查新旧数据与密码双向兼容。
+`make test-legacy` 目标已随本地外部脚本于 2026-10-22 移除；当时它编译旧认证、流通、UI 三套测试（91 项），在 build/legacy/run-*/ 的工作目录运行，不访问真实 data/。迁移测试另从此处编译旧仓储生成合成样本，再检查新旧数据与密码双向兼容；这部分参照程序现在需要自行用 gcc 编译。
 
-旧演示说明中的入口和路径只适用于历史版本。不要启动旧程序写入新快照数据目录。当前启动使用仓库根目录的 tools/run-library.ps1 或 make run。
+旧演示说明中的入口和路径只适用于历史版本。不要启动旧程序写入新快照数据目录。当前启动在项目根目录执行 `chcp 65001` 后 `make run`（旧的 tools/run-library.ps1 已移除）。

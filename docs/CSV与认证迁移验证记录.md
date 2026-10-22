@@ -18,8 +18,8 @@
 | `src/migration/store.c` | 两槽全表快照、代次与校验、提交验证、全表 CSV 导出与启动恢复 |
 | `include/migration/auth.h`、`src/migration/auth.c` | UTF-8 注册/登录/会话、冻结/解冻、旧 FNV 与新演示盐 |
 | `tests/test_migration.c` | CSV、认证、错误状态和快照恢复检查 |
-| `tools/test-migration.ps1` | 隔离目录、旧实现参照、严格编译、外部兼容与文件锁验证 |
-| `tools/migration/prepare-data.ps1` | 显式新建空数据集或复制完整五表，已有目标拒绝覆盖 |
+| ~~`tools/test-migration.ps1`~~ | 已移除、仅留本地：当时负责隔离目录、旧实现参照、严格编译、外部兼容与文件锁验证 |
+| ~~`tools/migration/prepare-data.ps1`~~ | 已移除、仅留本地：当时显式新建空数据集或复制完整五表，已有目标拒绝覆盖；现行等价操作由 Makefile 的 prepare 承担 |
 
 使用和接口限制见 [模块说明](../tools/migration/README.md)。新代码未取代旧 `src/data/`、`src/core/auth.c`；它们仍供旧主体运行和兼容性参照使用。
 
@@ -27,8 +27,9 @@
 
 ```powershell
 make test
-.\tools\preview\run-preview.ps1 -Test
-python tools/preview/audit_preview.py
+# 当时的辅助脚本已移除，仅留本地：
+# .\tools\preview\run-preview.ps1 -Test
+# python tools/preview/audit_preview.py
 ```
 
 - 迁移层 **66 项通过，0 失败**。

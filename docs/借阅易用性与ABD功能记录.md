@@ -4,13 +4,15 @@
 
 2026-10-22。用户授权：完成后在start留编译产物、借书/预约不再要求记图书ID或读者ID、实现A筛选排序/B图书资料编辑/D到期提醒。以下均已实现，未改五表CSV结构和业务期限/罚款口径。
 
-## 本地启动
+## 本地启动（2026-10-22 更正）
 
-双击项目start/CosmicLibrary.exe，或启动图书馆.cmd。make、tools/run-library.ps1编译后自动发布唯一C exe到start/app/，latest.txt指向最新版本；不覆盖正在运行的旧C exe，不重置数据。
+> 现行流程：项目根目录 `chcp 65001`、终端至少 120×35，然后 `make run`；`start/CosmicLibrary.exe` 就是 GCC 编译的 C 主程序。下文是该日当时的外部启动器方案，启动器与 .NET/cmd 入口已移除，仅作追溯。
 
-CosmicLibrary.exe是用tools/start/Launcher.cs编译的外部.NET环境启动器，只启动PowerShell的-UsePublished模式，负责UTF8、120×35可见窗口检查、数据准备与原单写者句柄保护。业务仍在纯C程序中，没有把.NET当作允许的C函数或后台自动同步实现。预编译启动不要求再次运行GCC；若构建机没有.NET Framework csc，保留cmd替代入口并提示。
+（历史）当时的 start/CosmicLibrary.exe 是外部 .NET 启动器：双击它或“启动图书馆.cmd”，由它按 latest.txt 定位 start/app/ 下的 C exe 并发布、保护。
 
-源码和协作流程已记录AGENTS.md；exe与latest.txt本地保留、Git忽略。源码包工具包含C#、cmd及start说明，仍不包含运行数据和exe。不要单独移动start目录或直接打开app内C exe绕过参数/环境保护。
+（历史）该启动器由 tools/start/Launcher.cs 编译，只调用 PowerShell 的 -UsePublished 模式，负责 UTF8、120×35 可见窗口检查、数据准备与原单写者句柄保护；业务始终在纯 C 程序中，没有把 .NET 当作允许的 C 函数或后台自动同步实现。
+
+源码和协作流程已记录AGENTS.md；exe与latest.txt本地保留、Git忽略。当前源码包只含纯 C 程序与 C 测试，仍不包含运行数据和exe。
 
 ## 借书与预约
 

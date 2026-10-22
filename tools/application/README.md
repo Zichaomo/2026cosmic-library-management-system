@@ -2,7 +2,7 @@
 
 # 新应用与持久化界面
 
-从项目根目录执行 `tools/run-library.ps1`，保持 120×35、暖白/暖石/鼠尾草绿和方案 A 焦点。
+在项目根目录执行 `chcp 65001`、把终端调到至少 120×35，再执行 `make run`（旧的 `tools/run-library.ps1` 已移除）。界面保持暖白/暖石/鼠尾草绿和方案 A 焦点。
 
 默认数据目录为 `build/library-data`，首次提供 `reader001 / reader123` 和 20 种图书；管理员为 `admin / admin123`。后续启动保留修改，不重建样本。原始 `data/` 不会被使用。
 
@@ -12,12 +12,12 @@
 
 默认构建 `make`，启动 `make run`；完整回归 `make test`，单独应用测试 `make test-application`。`make migrated` / `make run-migrated` 保留为别名。旧实现已独立归档到 legacy/，只作兼容参照。
 
-新界面使用 `src/ui_next/`，业务使用 `src/migration/library.c`，仓储与认证沿用迁移层。旧 `tools/preview/run-preview.ps1` 保留内存草图用途，不是持久化界面的入口。
+新界面使用 `src/ui_next/`，业务使用 `src/migration/library.c`，仓储与认证沿用迁移层。旧 `tools/preview/run-preview.ps1` 已移除（仅留本地），原型现在手动编译运行，见 [preview 说明](../preview/README.md)；它不是持久化界面的入口。
 
-脚本为整个应用运行持有数据目录独占句柄；从脚本启动并保持单进程。直接启动 exe 不具备脚本层单实例保护，不要同时运行第二个写入者。不要让旧程序写新迁移目录，也不要手改已建立快照的 CSV。
+原启动器曾为整次运行持有数据目录独占句柄；该启动器已取消，现在由使用者人工保证同一数据目录只开一个写入者。不要让旧程序写新迁移目录，也不要手改已建立快照的 CSV。
 
 `capture.py` 把最新应用测试导出的 C ANSI 帧复现为 docs/implementation 图片，不是实际终端截图。普通字段显示范围与真实输入法/字体限制见[第五步验证记录](../../docs/第五步业务与界面验证记录.md)。
 
 工作台现为左导航、右侧数据概览和当前事项说明，Enter进入选中事项。表单底部有光标定位/插入/删除提示，PPT的admn插入i修正为admin已通过实际登录回归。按钮统一预留选中符号与空格，切换焦点时文字不跳动。
 
-新增：工作台D到期提醒；借阅S筛选/P日期排序；图书管理B编辑ISBN/书名/作者。管理员按读者姓名/账号与书名/ISBN办理借书/预约，多结果候选选择，确认显示名称。start/CosmicLibrary.exe提供已编译版本的外部环境启动入口，编译后自动更新，勿直接运行app内C exe。
+新增：工作台D到期提醒；借阅S筛选/P日期排序；图书管理B编辑ISBN/书名/作者。管理员按读者姓名/账号与书名/ISBN办理借书/预约，多结果候选选择，确认显示名称。start/CosmicLibrary.exe 就是 GCC 编译出来的 C 主程序本身（`make` 直接覆盖它），也可执行 `start\CosmicLibrary.exe --data build/library-data`；无参数只打印用法。

@@ -2,33 +2,39 @@
 
 # UTF-8 数据与认证迁移模块
 
-代码位于 `include/migration/` 和 `src/migration/`，复用基础工具层，纯 C 实现不链接 BCrypt。现已由 `src/ui_next/` 新应用接入，启动见 `tools/run-library.ps1`；`tools/preview/` 仍是内存演示，`make all` 仍构建旧主体。
+代码位于 `include/migration/` 和 `src/migration/`，复用基础工具层，纯 C 实现不链接 BCrypt。现已由 `src/ui_next/` 新应用接入，启动见 `make run`（旧 `tools/run-library.ps1` 已移除）；`make all` 构建的就是当前应用，`tools/preview/` 仍是独立内存演示。
 
-## 一条命令验证
+## 验证方式（现行）
 
-在项目根目录的 PowerShell：
+`make test-migration` 目标与 `tools/test-migration.ps1` 已随本地外部脚本于 2026-10-22 移除；现行 `make test` 只跑基础层、搜索、应用与原型（297 项）。迁移层的 C 测试源码 `tests/test_migration.c` 仍在，可以直接用 gcc 编译运行：
 
 ```powershell
-make test-migration
+mkdir build\migration\run-manual
+copy resources\empty-data\* build\migration\run-manual\
+gcc -std=c11 -Wall -Wextra -Wpedantic -Werror -g -Iinclude -DCL_MIGRATION_TEST tests/test_migration.c src/migration/csv.c src/migration/schema.c src/migration/store.c src/migration/auth.c src/migration/library.c src/utils/foundation_utf8.c src/utils/foundation_text.c src/utils/foundation_date.c -o build/migration/tests.exe
+build\migration\tests.exe build/migration/run-manual
 ```
 
-也可执行 `.\tools\test-migration.ps1`。完整回归 `make test` 包含基础层、迁移层和旧系统测试；原型检查单独执行 `.\tools\preview\run-preview.ps1 -Test`。
+注意：完整 66 项还依赖当时脚本生成的旧实现合成样本、真实 Windows 文件锁和新进程登录等前置条件；只放空格式模板时实测 27 通过、3 失败。历史 66 项对应当时的脚本环境，不要用上面命令的输出冒充全量通过。
 
-每次在 `build/migration/run-随机编号/` 新建隔离目录，保留样本供检查，不覆盖真实 `data/`。迁移代码严格警告编译；同一脚本还编译未经修改的旧代码作为格式/散列兼容性参照，只有这部分参照程序仍链接 BCrypt。生成的参照源码、可执行文件与 CSV 都在 build/，不属于新 C 应用。
-
-已通过 66 项 C 检查，另有旧代码反向读取、新进程登录、实际 Windows 独占文件锁恢复和真实 CSV 哈希未变化检查。详见 [验证记录](../../docs/CSV与认证迁移验证记录.md)。
+已通过 66 项 C 检查（当时），另有旧代码反向读取、新进程登录、实际 Windows 独占文件锁恢复和真实 CSV 哈希未变化检查。详见 [验证记录](../../docs/CSV与认证迁移验证记录.md)。
 
 ## 准备新目录或导入副本
 
-```powershell
-# 必须指定一个尚不存在的目录；此命令只准备文件，不启动界面。
-.\tools\migration\prepare-data.ps1 -Destination 'build/my-migrated-data'
+`tools/migration/prepare-data.ps1` 已移除，改为手动准备；目标目录必须尚不存在：
 
-# 导入已有五张 CSV 的副本，同样要求目标目录尚不存在。
-.\tools\migration\prepare-data.ps1 -Destination 'build/imported-copy' -SourceDirectory 'path-to-copy-source'
+```powershell
+# 全新演示目录：Makefile 用 cmd 的 mkdir/copy 放入空模板，再由 C 程序生成样例
+make run DATA_DIR=build/demo
+
+# 导入一份已有的五张 CSV：新建目录，放入五张 CSV 与两枚 EMPTY 快照标记
+mkdir build\imported-copy
+copy readers.csv,books.csv,loans.csv,fines.csv,reservations.csv build\imported-copy\
+copy resources\empty-data\state.* build\imported-copy\
+start\CosmicLibrary.exe --data build/imported-copy
 ```
 
-源目录必须包含 readers.csv、books.csv、loans.csv、fines.csv、reservations.csv；导入只读源文件。脚本写入两枚 `EMPTY` 初始标记；C 模块首次加载并完整校验五张表后建立基线快照。不要在已有目录重新写 EMPTY 标记。
+源目录必须包含 readers.csv、books.csv、loans.csv、fines.csv、reservations.csv；复制只读源文件。两枚 `EMPTY` 初始标记表示尚无快照；C 模块首次加载并完整校验五张表后建立基线快照。不要在已有目录重新写 EMPTY 标记。
 
 C 接口使用相对 ASCII 目录名，例如 `build/imported-copy`，文件内容为 UTF-8；不把 Windows 窄字符 fopen 宣称为支持任意 UTF-8 绝对路径。中文项目目录可作为工作目录，相对 ASCII 子路径已通过实际验证。
 

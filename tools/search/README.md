@@ -1,5 +1,3 @@
-> 历史记录说明（2026-10-22）：本文涉及的 Python/PowerShell/.NET 工具仅留本地，已从当前仓库取消跟踪，旧启动与单写者保护说明已被[纯 C 启动流程](../../docs/纯C启动与仓库边界.md)取代；历史测试结果仅对应当时版本。
-
 # 离线拼音搜索
 
 运行时为纯C静态字表，无Python、联网或系统转换API。入口include/search/pinyin.h、src/search/pinyin.c；生成数据include/search/pinyin_data.h，44,350个汉字。

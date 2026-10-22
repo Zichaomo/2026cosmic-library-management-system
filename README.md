@@ -6,6 +6,9 @@
 
 ## 启动
 
+本机检查可直接双击`start/CosmicLibrary.exe`，使用已编译程序，不必再运行GCC。每次编译会自动更新start/；外部启动器仅配置环境与保护数据，C业务仍遵守课程限制。新克隆先按下述命令编译一次。启动文件和运行数据不提交Git。
+
+
 使用 Windows GCC/MinGW，将 gcc 和 make 加入 PATH。在项目根目录的 PowerShell 执行：
 
 ```powershell
@@ -20,6 +23,8 @@
 
 启动器在整个运行期间持有目录独占句柄，请保持单进程并从脚本启动。直接执行 exe 没有此保护。两槽快照支持进程中断恢复，不保证断电落盘；新快照建立后不要手改 CSV 或让旧程序同时写入。F5 是手动刷新，无按键时不自动同步。
 
+借书/预约按读者账号、姓名、书名或ISBN办理，重名结果可选择，确认框显示名称。借阅S筛选/P排序，图书管理B编辑，工作台D查看到期提醒。详见[功能验证记录](docs/借阅易用性与ABD功能记录.md)。
+
 ## 构建与验证
 
 ```powershell
@@ -27,7 +32,7 @@ make
 make test
 ```
 
-`make` 仅编译新应用，唯一 exe 路径保存在 `build/application/latest.txt`，不启动、不准备数据、不覆盖已运行实例。`make test` 一次完成源码清单核对、新构建、基础55、迁移66、应用115、原型67、拼音检索22与旧参照91项，以及新进程持久化、真实文件锁失败恢复和启动器独占检查。测试需要 Python 3（PATH 或本机 Codex bundled runtime），兼容参照独立链接 BCrypt，新应用不链接。
+`make` 仅编译新应用，唯一 exe 路径保存在 `build/application/latest.txt`，不启动、不准备数据、不覆盖已运行实例。`make test` 一次完成源码清单核对、新构建、基础55、迁移66、应用153、原型67、拼音检索22与旧参照91项，以及新进程持久化、真实文件锁失败恢复和启动器独占检查。测试需要 Python 3（PATH 或本机 Codex bundled runtime），兼容参照独立链接 BCrypt，新应用不链接。
 
 可分别执行 `make audit`、`make test-foundation`、`make test-migration`、`make test-application`、`make test-preview`、`make test-legacy`。`make migrated` / `make run-migrated` 保留为新构建/运行别名。VS Code 的默认构建、运行和测试任务调用同一套脚本。
 

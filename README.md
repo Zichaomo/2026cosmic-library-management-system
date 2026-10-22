@@ -7,11 +7,10 @@ Windows 控制台纯 C 课程设计：管理员与读者、图书管理、借还
 安装 Windows GCC/MinGW 和 GNU Make，将 gcc、make 加入 PATH。在项目根目录执行：
 
 ```text
-chcp 65001
 make run
 ```
 
-运行前手动把终端调整到至少120列×35行，使用支持 ANSI 真彩色的 Windows Terminal。`chcp 65001` 是用户手动设置环境的命令，不由 C 程序调用。程序通过教材允许的 getch 和输出函数完成交互，不启动 Python、PowerShell 或 .NET。
+运行前手动把终端调整到至少120列×35行，使用支持 ANSI 真彩色的 Windows Terminal。`make run` 在启动程序的同一条 cmd 命令中执行 `chcp 65001`，避免终端在启动原生进程时恢复为936；C程序不调用该命令。程序通过教材允许的 getch 和输出函数完成交互，不启动 Python、PowerShell 或 .NET。
 
 - `make`：严格 C11 编译，输出 `start/CosmicLibrary.exe`；这个 exe 就是 C 主程序，没有启动器。
 - `make run`：编译、首次准备数据，再直接运行 C 主程序。
@@ -21,7 +20,7 @@ make run
 数据准备完成后，也可从项目根目录直接运行：
 
 ```text
-start\CosmicLibrary.exe --data build/library-data
+cmd /d /c "chcp 65001 >nul && start\CosmicLibrary.exe --data build/library-data"
 ```
 
 exe 需要数据目录参数，不作为无参数双击入口。教材白名单没有创建目录和启动其他进程所需的函数，因此不另写启动器。Makefile 仅在运行前通过 cmd 内建 mkdir/copy 将 resources/empty-data/ 的空模板放入新目录，然后由 C 程序生成样例。已有目录保持原样，文件缺失或损坏会报错，不会静默重置。目录准备或首次样例生成失败时请保留现场排查，不要直接删除现有数据。

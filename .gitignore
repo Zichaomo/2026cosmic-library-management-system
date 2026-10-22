@@ -68,3 +68,6 @@ Desktop.ini
 # Python tooling caches
 __pycache__/
 *.py[cod]
+
+# Published local launcher manifest
+/start/latest.txt

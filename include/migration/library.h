@@ -4,7 +4,13 @@
 enum { CL_LIB_OK,CL_LIB_PENDING,CL_LIB_STORAGE,CL_LIB_UNCERTAIN,CL_LIB_DENIED,
        CL_LIB_NOT_FOUND,CL_LIB_BLOCKED,CL_LIB_NO_COPY,CL_LIB_LIMIT,
        CL_LIB_DUPLICATE,CL_LIB_CLOSED,CL_LIB_OVERDUE,CL_LIB_RENEW_LIMIT,
-       CL_LIB_QUEUE,CL_LIB_AVAILABLE,CL_LIB_INVALID };
+       CL_LIB_QUEUE,CL_LIB_AVAILABLE,CL_LIB_INVALID,CL_LIB_CONFLICT };
+typedef struct {
+    int id;
+    const char *isbn,*title,*author;
+    const char *original_isbn,*original_title,*original_author;
+} ClBookEdit;
+int cl_library_edit_book(ClStore *s,const ClSession *actor,const ClBookEdit *edit,ClDate today);
 const char *cl_library_message(int result);
 int cl_library_refresh(ClStore *s,ClDate today);
 int cl_library_borrow(ClStore *s,const ClSession *actor,int reader,int book,ClDate today,int *loan);

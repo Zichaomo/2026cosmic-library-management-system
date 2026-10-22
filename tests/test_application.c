@@ -213,6 +213,89 @@ static void test_ui(void) {
     check(app.match_count==0,"reader search excludes salts and password hashes");
     key(KEY_QUIT);check(!app.running,"Ctrl+Q exits application loop");cl_app_dispose(&app);
 }
+static int export_feature(const char *name) {
+    char path[512];pathname(path,"features/");text_append(path,512,name);text_append(path,512,".ans");
+    cl_app_scene(&app);FILE *f=fopen(path,"wb");int ok=f && cl_terminal_draw(f,1);
+    if (f) {cl_terminal_reset(f);if (fclose(f)) ok=0;}return ok;
+}
+static void test_features(void) {
+    char directory[512];pathname(directory,"features");ClStore s={0};ClSession admin={0},reader={0},other={0},third={0};
+    ClDate today=day(2026,10,21);int returned=0;
+    if (!cl_store_open(&s,directory)) {check(0,"open feature fixture");return;}
+    actors(&s,&admin,&reader);
+    check(register_reader(&s,"reader002",&other) && register_reader(&s,"reader003",&third),"prepare homonymous reader accounts");
+    int setup=cl_library_borrow(&s,&reader,reader.reader_id,1,day(2026,9,15),NULL)==CL_LIB_OK &&
+        cl_library_borrow(&s,&reader,reader.reader_id,2,day(2026,9,21),NULL)==CL_LIB_OK &&
+        cl_library_borrow(&s,&reader,reader.reader_id,3,day(2026,9,28),NULL)==CL_LIB_OK &&
+        cl_library_borrow(&s,&reader,reader.reader_id,4,day(2026,9,29),NULL)==CL_LIB_OK &&
+        cl_library_borrow(&s,&other,other.reader_id,5,day(2026,9,20),NULL)==CL_LIB_OK &&
+        cl_library_borrow(&s,&reader,reader.reader_id,6,day(2026,9,1),&returned)==CL_LIB_OK &&
+        cl_library_return(&s,&reader,returned,day(2026,9,2),NULL)==CL_LIB_OK;
+    check(setup,"prepare overdue today seventh-day eighth-day and returned boundaries");
+    ClRow original=s.table[1].rows[0];
+    ClBookEdit edit={1,"EDIT-ONE","修订后的图书","修订作者",original.field[1],original.field[2],original.field[3]};
+    check(cl_library_edit_book(&s,&reader,&edit,today)==CL_LIB_DENIED,"reader cannot edit catalog metadata");
+    check(cl_library_edit_book(&s,&admin,&edit,today)==CL_LIB_OK && book(&s,1,4)==3 && book(&s,1,5)==2 &&
+        cl_library_number(&s.table[2].rows[0],1)==1,"metadata edit retains book identity inventory and active-loan references");
+    check(cl_library_edit_book(&s,&admin,&edit,today)==CL_LIB_CONFLICT,"stale metadata form cannot silently overwrite another edit");
+    ClRow current=s.table[1].rows[0];
+    ClBookEdit invalid={1,"DEMO-2","不能保存","作者",current.field[1],current.field[2],current.field[3]};
+    check(cl_library_edit_book(&s,&admin,&invalid,today)==CL_LIB_DUPLICATE,"editing refuses another book's ISBN");
+    invalid.isbn="EDIT-ONE";invalid.title="";
+    check(cl_library_edit_book(&s,&admin,&invalid,today)==CL_LIB_INVALID && !strcmp(s.table[1].rows[0].field[2],"修订后的图书"),"invalid edit preserves committed metadata");
+    invalid.title="中断的修改";cl_store_test_stop(1);
+    check(cl_library_edit_book(&s,&admin,&invalid,today)==CL_LIB_UNCERTAIN && s.blocked,"interrupted metadata commit blocks unsafe retries");
+    check(cl_library_refresh(&s,today)==CL_LIB_OK && !strcmp(s.table[1].rows[0].field[2],"修订后的图书"),"metadata edit interruption restores original snapshot");
+    check(cl_library_add_book(&s,&admin,"SAME-A","同名测试图书","作者甲",2,today)==CL_LIB_OK &&
+        cl_library_add_book(&s,&admin,"SAME-B","同名测试图书","作者乙",2,today)==CL_LIB_OK,"allow same titles distinguished by ISBN");
+    int last_book=cl_library_number(&s.table[1].rows[s.table[1].count-1],0);cl_store_dispose(&s);
+    if (!cl_app_init(&app,directory,today)) {check(0,"open feature UI");return;}
+    login("reader001");int soon,overdue,previews=export_feature("feature-reader-home");cl_app_due_counts(&app,&soon,&overdue);
+    check(soon==2 && overdue==1,"reader reminder includes due-today/day-seven and excludes another patron/day-eight");
+    type("d");check(app.page==N_MY_LOANS && app.loan_filter==LOANS_ATTENTION && app.loan_sort==1 && app.match_count==3,"D reminder opens the actionable filtered personal loan list");
+    previews=previews && export_feature("feature-due-loans");
+    cl_app_enter(&app,N_MY_LOANS);check(app.match_count==5,"all-loans filter includes returned history");
+    type("s");check(app.match_count==4,"active filter excludes returned loans");
+    type("s");check(app.match_count==1 && cl_app_selected_id(&app)==returned,"returned filter selects the correct record");
+    type("s");check(app.match_count==1 && cl_app_selected_id(&app)==1,"overdue filter excludes today and other readers");
+    type("s");check(app.match_count==2,"due-soon filter includes today and seventh-day boundary");
+    cl_app_enter(&app,N_MY_LOANS);type("p");check(cl_app_selected_id(&app)==returned,"ascending due sort puts the earliest date first");
+    type("p");check(cl_app_selected_id(&app)==4,"descending due sort puts the latest date first");
+    type("k");type("dd");check(app.loan_sort==2 && !app.command,"sorting controls remain ordinary characters inside search");
+    login("admin");cl_app_due_counts(&app,&soon,&overdue);check(soon==2 && overdue==2,"admin reminder aggregates all patrons");
+    previews=previews && export_feature("feature-admin-home");
+    cl_app_enter(&app,N_BOOKS);type("b");check(app.page==N_NEW_BOOK && app.edit_book_id==1 && !strcmp(app.field[1].text,"修订后的图书"),"B opens prefilled metadata editor");
+    previews=previews && export_feature("feature-edit-book");
+    key(KEY_TAB);key(KEY_END);type("修订");key(KEY_TAB);key(KEY_TAB);key(KEY_ENTER);
+    check(app.page==N_BOOKS && !strcmp(app.store.table[1].rows[0].field[2],"修订后的图书修订"),"editing saves only metadata through the form");
+    type("b");type("X");key(KEY_ESC);check(app.discard,"dirty edit asks before discarding input");type("n");
+    check(app.page==N_NEW_BOOK && app.dirty,"cancelled discard retains edit input");key(KEY_ESC);type("y");
+    check(app.page==N_BOOKS && !strcmp(app.store.table[1].rows[0].field[1],"EDIT-ONE"),"discard does not alter the book");
+    type("j");check(app.borrow_book_id==1 && !strcmp(app.field[1].text,"修订后的图书修订"),"catalog action carries a readable title and stable identity");
+    previews=previews && export_feature("feature-borrow");
+    type("测试读者");key(KEY_ENTER);check(app.picker==1 && app.picker_count==2 && !app.command,"same-name readers require an explicit account choice");
+    previews=previews && export_feature("feature-reader-picker");
+    key(KEY_DOWN);key(KEY_ENTER);check(app.borrow_reader_id==third.reader_id && !strcmp(app.field[0].text,"reader003"),"reader picker binds the chosen account rather than the name");
+    cl_app_enter(&app,N_BORROW);type("reader003");key(KEY_ENTER);type("同名测试图书");key(KEY_ENTER);
+    check(app.picker==2 && app.picker_count==2,"same-title books require an explicit ISBN choice");
+    previews=previews && export_feature("feature-book-picker");
+    key(KEY_DOWN);key(KEY_ENTER);key(KEY_ENTER);
+    previews=previews && export_feature("feature-confirm");
+    check(app.command==CMD_BORROW && app.command_reader==third.reader_id && app.command_id==last_book,"borrow confirmation binds exactly the selected reader and book");
+    cl_app_scene(&app);char frame[512];pathname(frame,"friendly-confirm.txt");static char buffer[30000];
+    FILE *f=fopen(frame,"wb+");int readable=f && cl_terminal_text(f);
+    if (f) {rewind(f);size_t n=fread(buffer,1,sizeof(buffer)-1,f);buffer[n]=0;
+        readable=readable && strstr(buffer,"同名测试图书") && strstr(buffer,"测试读者") && strstr(buffer,"reader003") && strstr(buffer,"SAME-B") && !strstr(buffer,"记录 / 图书 ID");
+        if (fclose(f)) readable=0;}
+    check(readable,"confirmation shows title ISBN reader name and account instead of opaque IDs");
+    type("y");check(book(&app.store,last_book,5)==1 && app.store.table[2].count==7,"friendly borrowing actually commits the intended loan");
+    cl_app_enter(&app,N_CATALOG);key(KEY_END);type("y");type("reader002");key(KEY_ENTER);key(KEY_ENTER);key(KEY_ENTER);
+    check(app.command==CMD_RESERVE && app.command_id==last_book && app.command_reader==other.reader_id,"reservation uses the same readable selection path");type("n");
+    cl_app_enter(&app,N_BORROW);type("reader001");key(KEY_ENTER);key(KEY_BACKTAB);key(KEY_END);type("x");key(KEY_ENTER);
+    check(!app.borrow_reader_id && !app.command && app.focus==0,"editing a resolved reader invalidates its old identity");
+    check(previews,"export new forms pickers reminders and confirmations for layout verification");
+    cl_app_dispose(&app);
+}
 static void test_scrollbar(void) {
     char file[512],line[1024];pathname(file,"scrollbar-grid.txt");
     int counts[]={8,24,24,24},selected[]={0,0,8,23};
@@ -238,6 +321,6 @@ int main(int argc,char **argv) {
         cl_store_dispose(&s);return ok?0:2;
     }
     if (argc!=2 || strstr(argv[1],"build/application/run-")!=argv[1]) return 2;
-    text_copy(root,512,argv[1]);test_circulation();test_limits();test_queue();test_failure();test_ui();test_scrollbar();
+    text_copy(root,512,argv[1]);test_circulation();test_limits();test_queue();test_failure();test_ui();test_scrollbar();test_features();
     printf("\n%d passed, %d failed\n",passed,failed);return failed?1:0;
 }

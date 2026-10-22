@@ -268,6 +268,26 @@ int cl_library_add_book(ClStore *s,const ClSession *a,const char *isbn,const cha
     }
     return finish(s,&w,result);
 }
+int cl_library_edit_book(ClStore *s,const ClSession *a,const ClBookEdit *edit,ClDate today) {
+    ClStore w={0};if (!begin(s,&w,today)) return CL_LIB_STORAGE;
+    int result=CL_LIB_OK,i=edit?cl_library_find(&w,1,edit->id):-1;
+    if (!admin(a)) result=CL_LIB_DENIED;
+    else if (!edit || !edit->isbn || !*edit->isbn || !edit->title || !*edit->title ||
+             !edit->author || !*edit->author || !edit->original_isbn ||
+             !edit->original_title || !edit->original_author) result=CL_LIB_INVALID;
+    else if (i<0) result=CL_LIB_NOT_FOUND;
+    else {
+        ClRow *b=&w.table[1].rows[i];
+        if (!same(b,1,edit->original_isbn) || !same(b,2,edit->original_title) ||
+            !same(b,3,edit->original_author)) result=CL_LIB_CONFLICT;
+        for (int j=0;result==CL_LIB_OK && j<w.table[1].count;++j)
+            if (j!=i && same(&w.table[1].rows[j],1,edit->isbn)) result=CL_LIB_DUPLICATE;
+        if (result==CL_LIB_OK && (!text_copy(b->field[1],512,edit->isbn) ||
+            !text_copy(b->field[2],512,edit->title) || !text_copy(b->field[3],512,edit->author) ||
+            !cl_store_validate(w.table))) result=CL_LIB_INVALID;
+    }
+    return finish(s,&w,result);
+}
 int cl_library_book_action(ClStore *s,const ClSession *a,int book,int add_copy,ClDate today) {
     ClStore w={0};if (!begin(s,&w,today)) return CL_LIB_STORAGE;
     int i=cl_library_find(&w,1,book),result=CL_LIB_OK;
@@ -316,6 +336,6 @@ const char *cl_library_message(int result) {
         "错误：没有权限，或当前账号状态已改变。","错误：记录不存在。","错误：读者冻结或未付罚款达到限制。",
         "错误：图书停借或暂无可借副本。","错误：在借图书已达 5 本。","错误：重复 ISBN、借阅或预约。",
         "错误：此记录已处理，不能重复提交。","错误：存在逾期借阅，请先归还。","错误：只能续借一次。",
-        "错误：有读者预约此书，不能续借。","错误：尚有可借副本，无需预约。","错误：字段、容量或日期不合法。"};
-    return result>=0 && result<=CL_LIB_INVALID?messages[result]:"错误：未知结果。";
+        "错误：有读者预约此书，不能续借。","错误：尚有可借副本，无需预约。","错误：字段、容量或日期不合法。","错误：图书资料已改变，请重新打开编辑，输入尚未丢弃。"};
+    return result>=0 && result<=CL_LIB_CONFLICT?messages[result]:"错误：未知结果。";
 }

@@ -9,7 +9,7 @@ static int is_list(NextPage p) {
         p==N_RESERVATIONS || p==N_MY_RESERVATIONS || p==N_FINES || p==N_MY_FINES;
 }
 static int is_form(NextPage p) { return p==N_LOGIN || p==N_REGISTER || p==N_NEW_BOOK || p==N_BORROW; }
-static int fields(NextPage p) { return p==N_REGISTER?5:(p==N_NEW_BOOK?4:2); }
+static int fields(const NextApp *a) { return a->page==N_REGISTER?5:(a->page==N_NEW_BOOK?(a->edit_book_id?3:4):2); }
 static void clear_fields(NextApp *a) {
     for (int i=0;i<5;++i) {Edit empty={{0},0};a->field[i]=empty;}
 }
@@ -20,7 +20,7 @@ static int refresh(NextApp *a) {
         int ri=cl_library_find(&a->store,0,a->session.reader_id);
         if (ri<0 || strcmp(a->store.table[0].rows[ri].field[7],"正常")) {
             cl_session_clear(&a->session);clear_fields(a);a->page=N_LOGIN;
-            a->command=a->discard=a->detail=a->help=a->focus=0;
+            a->command=a->discard=a->detail=a->help=a->focus=a->picker=0;
             message(a,"错误：账号状态已改变，请重新登录。");return 0;
         }
     }
@@ -37,6 +37,7 @@ void cl_app_rebuild(NextApp *a) {
         if (a->page==N_MY_LOANS && cl_library_number(r,2)!=a->session.reader_id) continue;
         if (a->page==N_MY_RESERVATIONS && cl_library_number(r,2)!=a->session.reader_id) continue;
         if (a->page==N_MY_FINES && cl_library_number(r,1)!=a->session.reader_id) continue;
+        if (a->kind==2 && !cl_app_filter_loan(a,r)) continue;
         int found=!a->search.text[0];
         for (int c=0;!found && c<r->count;++c) {
             if (a->kind==0 && (c==3 || c==4)) continue;
@@ -63,6 +64,7 @@ void cl_app_rebuild(NextApp *a) {
         }
         if (found) a->matches[a->match_count++]=i;
     }
+    cl_app_sort_loans(a);
     if (a->selected>=a->match_count) a->selected=a->match_count?a->match_count-1:0;
     if (a->selected<0) a->selected=0;
 }
@@ -77,6 +79,7 @@ void cl_app_enter(NextApp *a,NextPage page) {
         message(a,"错误：管理员请从管理页面办理操作。");return;
     }
     a->page=page;a->focus=0;a->selected=0;a->searching=a->detail=a->dirty=a->discard=0;a->command=0;
+    a->loan_filter=a->loan_sort=a->edit_book_id=a->borrow_book_id=a->borrow_reader_id=a->picker=0;
     a->search.text[0]=0;a->search.cursor=0;clear_fields(a);
     if (page==N_NEW_BOOK) {text_copy(a->field[3].text,512,"1");a->field[3].cursor=1;}
     message(a,"");
@@ -99,7 +102,7 @@ static void logout(NextApp *a) {
 static void result(NextApp *a,int status) { message(a,cl_library_message(status));cl_app_rebuild(a); }
 static int same(Event e,char lower,char upper) { return e.key==KEY_TEXT && !e.text[1] && (e.text[0]==lower || e.text[0]==upper); }
 static void request(NextApp *a,int command,int id,int reader) {
-    a->command=command;a->command_id=id;a->command_reader=reader;
+    a->command=command;a->command_id=id;a->command_reader=reader;message(a,"");
 }
 static void execute(NextApp *a) {
     int c=a->command,id=a->command_id,reader=a->command_reader,status=CL_LIB_INVALID;
@@ -115,6 +118,41 @@ static void execute(NextApp *a) {
     if (c==CMD_FREEZE) status=cl_library_reader_action(&a->store,&a->session,id,a->today);
     if (a->page==N_BORROW && (status==CL_LIB_OK || status==CL_LIB_PENDING)) cl_app_enter(a,a->form_reserve?N_RESERVATIONS:N_LOANS);
     result(a,status);
+}
+static int resolve_field(NextApp *a,int field,int from_submit) {
+    int *bound=field?&a->borrow_book_id:&a->borrow_reader_id,kind=field?1:0;
+    if (*bound) {
+        if (cl_library_find(&a->store,kind,*bound)>=0) return 1;
+        *bound=0;message(a,"错误：原选择已不可用，请重新选择。");a->focus=field;return 0;
+    }
+    const char *q=a->field[field].text;
+    if (!*q) {message(a,field?"错误：请输入书名或 ISBN。":"错误：请输入读者姓名或账号。");a->focus=field;return 0;}
+    int best=0;a->picker_count=0;
+    for (int i=0;i<a->store.table[kind].count;++i) {
+        const ClRow *r=&a->store.table[kind].rows[i];
+        int rank=!strcmp(r->field[1],q)?3:(!strcmp(r->field[2],q)?2:0);
+        if (!rank && (cl_search_match(r->field[1],q) || cl_search_match(r->field[2],q) ||
+            (field && cl_search_match(r->field[3],q)))) rank=1;
+        if (!rank || rank<best) continue;
+        if (rank>best) {a->picker_count=0;best=rank;}
+        a->picker_ids[a->picker_count++]=cl_library_number(r,0);
+    }
+    if (!a->picker_count) {message(a,field?"错误：没有匹配图书，请修改书名或 ISBN。":"错误：没有匹配读者，请修改姓名或账号。");a->focus=field;return 0;}
+    if (a->picker_count==1) {*bound=a->picker_ids[0];message(a,"");return 1;}
+    a->picker=field+1;a->picker_submit=from_submit;a->picker_selected=0;
+    message(a,"有多个结果，请选择具体记录，Enter 确认。");return 0;
+}
+static void edit_book(NextApp *a,int id) {
+    cl_app_enter(a,N_NEW_BOOK);
+    if (a->page!=N_NEW_BOOK) return;
+    int bi=cl_library_find(&a->store,1,id);
+    if (bi<0) {message(a,"错误：图书不存在。");return;}
+    a->edit_book_id=id;
+    for (int i=0;i<3;++i) {
+        text_copy(a->field[i].text,512,a->store.table[1].rows[bi].field[i+1]);
+        a->field[i].cursor=(int)strlen(a->field[i].text);
+        text_copy(a->edit_original[i],512,a->field[i].text);
+    }
 }
 static void submit(NextApp *a) {
     if (!refresh(a)) return;
@@ -143,17 +181,21 @@ static void submit(NextApp *a) {
             a->focus=status==CL_REGISTER_BAD_PHONE?4:(status==CL_REGISTER_BAD_NUMBER || status==CL_REGISTER_DUPLICATE?0:2);
         }
     } else if (a->page==N_NEW_BOOK) {
+        if (a->edit_book_id) {
+            ClBookEdit edit={a->edit_book_id,a->field[0].text,a->field[1].text,a->field[2].text,
+                a->edit_original[0],a->edit_original[1],a->edit_original[2]};
+            int status=cl_library_edit_book(&a->store,&a->session,&edit,a->today);
+            if (status==CL_LIB_OK || status==CL_LIB_PENDING) cl_app_enter(a,N_BOOKS);
+            result(a,status);return;
+        }
         int copies;
         if (!positive_number(a->field[3].text,&copies)) {message(a,"错误：副本数必须为正整数。");a->focus=3;return;}
         int status=cl_library_add_book(&a->store,&a->session,a->field[0].text,a->field[1].text,a->field[2].text,copies,a->today);
         if (status==CL_LIB_OK || status==CL_LIB_PENDING) cl_app_enter(a,N_BOOKS);
         result(a,status);
     } else if (a->page==N_BORROW) {
-        int reader,book;
-        if (!positive_number(a->field[0].text,&reader) || !positive_number(a->field[1].text,&book)) {
-            message(a,"错误：请输入有效的读者 ID 和图书 ID。");return;
-        }
-        request(a,a->form_reserve?CMD_RESERVE:CMD_BORROW,book,reader);
+        if (!resolve_field(a,0,1) || !resolve_field(a,1,1)) return;
+        request(a,a->form_reserve?CMD_RESERVE:CMD_BORROW,a->borrow_book_id,a->borrow_reader_id);
     }
 }
 static void back(NextApp *a) {
@@ -169,6 +211,28 @@ void cl_app_event(NextApp *a,Event e,ClDate today) {
     if (e.key==KEY_F1) {a->help=!a->help;return;}
     if (a->help) {if (e.key==KEY_ESC || e.key==KEY_ENTER) a->help=0;return;}
     if (a->command) {if (same(e,'y','Y')) execute(a);else if (same(e,'n','N') || e.key==KEY_ESC) a->command=0;return;}
+    if (a->picker) {
+        if (e.key==KEY_ESC) {a->picker=0;return;}
+        if (e.key==KEY_UP && a->picker_selected>0) --a->picker_selected;
+        else if (e.key==KEY_DOWN && a->picker_selected+1<a->picker_count) ++a->picker_selected;
+        else if (e.key==KEY_PGUP || e.key==KEY_PGDN) {
+            a->picker_selected+=e.key==KEY_PGDN?6:-6;
+            if (a->picker_selected<0) a->picker_selected=0;
+            if (a->picker_selected>=a->picker_count) a->picker_selected=a->picker_count-1;
+        } else if (e.key==KEY_ENTER) {
+            int field=a->picker-1,id=a->picker_ids[a->picker_selected],resume=a->picker_submit;
+            a->picker=0;
+            if (!refresh(a)) return;
+            int row=cl_library_find(&a->store,field?1:0,id);
+            if (row<0) {message(a,"错误：记录已改变，请重新查找。");return;}
+            const ClRow *r=&a->store.table[field?1:0].rows[row];
+            if (field) a->borrow_book_id=id;else a->borrow_reader_id=id;
+            text_copy(a->field[field].text,512,r->field[field?2:1]);
+            a->field[field].cursor=(int)strlen(a->field[field].text);a->focus=field+1;message(a,"");
+            if (resume) submit(a);
+        }
+        return;
+    }
     if (a->discard) {
         if (same(e,'y','Y')) {a->discard=0;back(a);}
         else if (same(e,'n','N') || e.key==KEY_ESC) a->discard=0;
@@ -177,6 +241,10 @@ void cl_app_event(NextApp *a,Event e,ClDate today) {
     if (a->detail) {if (e.key==KEY_ESC || e.key==KEY_ENTER) a->detail=0;return;}
     if (a->page==N_WELCOME || a->page==N_ADMIN || a->page==N_READER) {
         int count=a->page==N_WELCOME?3:(a->page==N_ADMIN?9:5);
+        if (a->page!=N_WELCOME && same(e,'d','D')) {
+            NextPage target=is_admin(a)?N_LOANS:N_MY_LOANS;cl_app_enter(a,target);
+            if (a->page==target) {a->loan_filter=LOANS_ATTENTION;a->loan_sort=1;cl_app_rebuild(a);}return;
+        }
         if (e.key==KEY_TAB || e.key==KEY_DOWN || e.key==KEY_RIGHT) a->focus=(a->focus+1)%count;
         else if (e.key==KEY_BACKTAB || e.key==KEY_UP || e.key==KEY_LEFT) a->focus=(a->focus+count-1)%count;
         else if (e.key==KEY_ESC) {if (a->page==N_WELCOME) a->running=0;else logout(a);}
@@ -207,11 +275,16 @@ void cl_app_event(NextApp *a,Event e,ClDate today) {
             a->selected+=e.key==KEY_PGDN?8:-8;cl_app_rebuild(a);
         } else if (same(e,'k','K')) a->searching=1;
         else if (e.key==KEY_ENTER && id) a->detail=1;
+        else if (a->kind==2 && same(e,'s','S')) {a->loan_filter=(a->loan_filter+1)%LOANS_FILTER_COUNT;a->selected=0;cl_app_rebuild(a);}
+        else if (a->kind==2 && same(e,'p','P')) {a->loan_sort=(a->loan_sort+1)%3;a->selected=0;cl_app_rebuild(a);}
+        else if (a->page==N_BOOKS && id && same(e,'b','B')) edit_book(a,id);
         else if (a->page==N_BOOKS && same(e,'c','C')) cl_app_enter(a,N_NEW_BOOK);
         else if ((a->page==N_CATALOG || a->page==N_BOOKS) && id && (same(e,'j','J') || same(e,'y','Y'))) {
             if (is_admin(a)) {
                 a->form_reserve=same(e,'y','Y');cl_app_enter(a,N_BORROW);
-                cl_int_format(a->field[1].text,512,id);a->field[1].cursor=(int)strlen(a->field[1].text);
+                int bi=cl_library_find(&a->store,1,id);a->borrow_book_id=id;
+                if (bi>=0) text_copy(a->field[1].text,512,a->store.table[1].rows[bi].field[2]);
+                a->field[1].cursor=(int)strlen(a->field[1].text);
             } else request(a,same(e,'j','J')?CMD_BORROW:CMD_RESERVE,id,a->session.reader_id);
         } else if (a->page==N_BOOKS && id && (same(e,'z','Z') || same(e,'t','T'))) request(a,same(e,'t','T')?CMD_SUSPEND:CMD_COPY,id,0);
         else if ((a->page==N_LOANS || a->page==N_MY_LOANS) && id && (same(e,'g','G') || same(e,'x','X'))) request(a,same(e,'g','G')?CMD_RETURN:CMD_RENEW,id,0);
@@ -221,19 +294,24 @@ void cl_app_event(NextApp *a,Event e,ClDate today) {
         return;
     }
     if (is_form(a->page)) {
-        int n=fields(a->page),controls=n+2;
+        int n=fields(a),controls=n+2;
         if (e.key==KEY_TAB || e.key==KEY_DOWN) a->focus=(a->focus+1)%controls;
         else if (e.key==KEY_BACKTAB || e.key==KEY_UP) a->focus=(a->focus+controls-1)%controls;
         else if (e.key==KEY_ESC) {if (a->dirty && a->page!=N_LOGIN) a->discard=1;else back(a);}
         else if (e.key==KEY_ENTER) {
-            if (a->focus<n) ++a->focus;
+            if (a->focus<n) {
+                if (a->page!=N_BORROW || (refresh(a) && resolve_field(a,a->focus,0))) ++a->focus;
+            }
             else if (a->focus==n) submit(a);
             else {if (a->dirty && a->page!=N_LOGIN) a->discard=1;else back(a);}
         } else if (a->focus<n) {
             int secret=(a->page==N_LOGIN && a->focus==1) || (a->page==N_REGISTER && (a->focus==2 || a->focus==3));
             int changed=e.key==KEY_TEXT?(secret?edit_insert_password(&a->field[a->focus],e.text):
                 edit_insert(&a->field[a->focus],e.text)):edit_key(&a->field[a->focus],e.key);
-            if (changed) a->dirty=1;
+            if (changed) {
+                a->dirty=1;
+                if (a->page==N_BORROW) {if (a->focus==0) a->borrow_reader_id=0;else a->borrow_book_id=0;}
+            }
         }
     }
 }

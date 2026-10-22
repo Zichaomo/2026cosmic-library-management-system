@@ -134,7 +134,7 @@ static void row(const NextApp *a,const ClRow *r,int y,int active) {
 }
 static void lists(const NextApp *a) {
     put(4,6,"检索",TEXT,8);cl_ui_input(12,5,72,&a->search,a->searching,0);
-    if (!*a->search.text && !a->searching) put(15,6,a->kind==1?"输入书名 / 作者 / ISBN":"输入编号、状态或日期",MUTED,60);
+    if (!*a->search.text && !a->searching) put(15,6,a->kind==1?"书名 / 作者 / ISBN / 拼音 / 首字母":(a->kind==0?"编号 / 姓名 / 拼音 / 状态":"书名 / 读者 / 拼音 / 编号 / 日期"),MUTED,60);
     put(90,6,a->searching?"Enter 完成检索":"按 K 键进入检索",MUTED,25);
     cl_ui_integer(88,4,a->match_count,MUTED);put(98,4,"条",MUTED,3);
     cl_ui_integer(103,4,a->match_count?a->selected/8+1:0,MUTED);put(107,4,"/",MUTED,1);
@@ -152,6 +152,10 @@ static void lists(const NextApp *a) {
     for (int i=0;i<8;++i) {
         int index=page*8+i;if (index>=a->match_count) break;
         row(a,&a->store.table[a->kind].rows[a->matches[index]],13+i*2,index==a->selected);
+    }
+    if (a->match_count>8) {
+        put(114,12,"^",MUTED,1);put(114,28,"v",MUTED,1);
+        cl_ui_scrollbar(114,13,15,a->selected,a->match_count,8);
     }
     if (!a->match_count) put(12,18,"暂无记录或没有匹配结果。",MUTED,96);
     else {

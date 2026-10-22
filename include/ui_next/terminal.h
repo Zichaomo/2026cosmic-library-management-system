@@ -22,6 +22,7 @@ void cl_ui_line(int x,int y,int width);
 void cl_ui_box(int x,int y,int width,int height,const char *label);
 void cl_ui_input(int x,int y,int width,const Edit *edit,int active,int secret);
 void cl_ui_button(int x,int y,const char *label,int focused);
+void cl_ui_scrollbar(int x,int y,int height,int selected,int count,int page_size);
 /* force: 0 dirty rows, 1 clear + full redraw, 2 full repaint without clearing.
    Interactive repaint repairs terminal damage after resizing on the next key. */
 int cl_terminal_draw(FILE *stream,int force);

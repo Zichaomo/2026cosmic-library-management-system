@@ -1,4 +1,5 @@
 #include "ui_next/app.h"
+#include "search/pinyin.h"
 #include <string.h>
 
 static void message(NextApp *a,const char *text) { text_copy(a->message,512,text); }
@@ -39,7 +40,26 @@ void cl_app_rebuild(NextApp *a) {
         int found=!a->search.text[0];
         for (int c=0;!found && c<r->count;++c) {
             if (a->kind==0 && (c==3 || c==4)) continue;
-            if (strstr(r->field[c],a->search.text)) found=1;
+            if (cl_search_match(r->field[c],a->search.text)) found=1;
+        }
+        /* Circulation rows store IDs; search their visible related metadata,
+           after the ownership filter above, never password hash or salt. */
+        if (!found && a->kind>=2) {
+            int reader_id=cl_library_number(r,a->kind==3?1:2);
+            int book_id=a->kind==3?0:cl_library_number(r,1);
+            if (a->kind==3) {
+                int loan=cl_library_find(&a->store,2,cl_library_number(r,2));
+                if (loan>=0) book_id=cl_library_number(&a->store.table[2].rows[loan],1);
+            }
+            int reader=cl_library_find(&a->store,0,reader_id),book=cl_library_find(&a->store,1,book_id);
+            if (reader>=0) {
+                const ClRow *person=&a->store.table[0].rows[reader];
+                found=cl_search_match(person->field[1],a->search.text) || cl_search_match(person->field[2],a->search.text);
+            }
+            if (!found && book>=0) {
+                const ClRow *title=&a->store.table[1].rows[book];
+                found=cl_search_match(title->field[2],a->search.text) || cl_search_match(title->field[3],a->search.text);
+            }
         }
         if (found) a->matches[a->match_count++]=i;
     }

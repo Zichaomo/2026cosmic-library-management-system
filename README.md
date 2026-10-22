@@ -12,7 +12,7 @@
 .\tools\run-library.ps1
 ```
 
-或 `make run`。终端支持 ANSI 真彩色，至少 120 列 ×35 行；脚本设置 UTF-8 代码页并检查实际可见尺寸。Tab/方向键导航，Enter 确认，F1 帮助，F5 重读，Ctrl+Q 退出。列表按 K 键进入检索；完整按键表见[快捷键与缩放修正](docs/快捷键与缩放修正记录.md)。
+或 `make run`。终端支持 ANSI 真彩色，至少 120 列 ×35 行；脚本设置 UTF-8 代码页并检查实际可见尺寸。Tab/方向键导航，Enter 确认，F1 帮助，F5 重读，Ctrl+Q 退出。列表按 K 键进入检索，支持中文、全拼、首字母及混合输入；超过一页时显示键盘位置滚动条；完整按键表见[快捷键与缩放修正](docs/快捷键与缩放修正记录.md)。
 
 欢迎页标题、标语与按钮按同一中轴居中。管理员/读者工作台采用左导航、右侧概览与事项说明；表单提示左右定位、插入和删除，见[工作台与编辑调整](docs/工作台与编辑交互调整.md)。缩小窗口再放大后，下一次有效按键会完整补画；推荐按 F5 直接恢复，不触发业务操作。白名单下仍使用阻塞 getch，静置时不能自动检测尺寸。
 
@@ -27,9 +27,11 @@ make
 make test
 ```
 
-`make` 仅编译新应用，唯一 exe 路径保存在 `build/application/latest.txt`，不启动、不准备数据、不覆盖已运行实例。`make test` 一次完成源码清单核对、新构建、基础55、迁移66、应用106、原型67与旧参照91项，以及新进程持久化、真实文件锁失败恢复和启动器独占检查。测试需要 Python 3（PATH 或本机 Codex bundled runtime），兼容参照独立链接 BCrypt，新应用不链接。
+`make` 仅编译新应用，唯一 exe 路径保存在 `build/application/latest.txt`，不启动、不准备数据、不覆盖已运行实例。`make test` 一次完成源码清单核对、新构建、基础55、迁移66、应用115、原型67、拼音检索22与旧参照91项，以及新进程持久化、真实文件锁失败恢复和启动器独占检查。测试需要 Python 3（PATH 或本机 Codex bundled runtime），兼容参照独立链接 BCrypt，新应用不链接。
 
 可分别执行 `make audit`、`make test-foundation`、`make test-migration`、`make test-application`、`make test-preview`、`make test-legacy`。`make migrated` / `make run-migrated` 保留为新构建/运行别名。VS Code 的默认构建、运行和测试任务调用同一套脚本。
+
+新增离线检索位于src/search/、include/search/，Unicode数据许可及生成方式见[搜索说明](tools/search/README.md)。更多功能候选见[功能补齐与参考方案](docs/功能补齐与参考方案.md)，由用户选择后实施，PPT/报告暂缓。
 
 ## 源码与文档
 

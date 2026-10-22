@@ -311,7 +311,7 @@ int cl_library_seed(ClStore *s,const ClSession *a,ClDate today) {
     return finish(s,&w,CL_LIB_OK);
 }
 const char *cl_library_message(int result) {
-    static const char *messages[]={"操作已保存。","已保存，CSV 待恢复；按 F5 重读，勿重复提交。",
+    static const char *messages[]={"操作已保存。","已保存，CSV 待恢复；按 F5 刷新，勿重复提交。",
         "错误：无法读取或保存数据。","错误：提交状态待确认；按 F5 恢复后再查询。",
         "错误：没有权限，或当前账号状态已改变。","错误：记录不存在。","错误：读者冻结或未付罚款达到限制。",
         "错误：图书停借或暂无可借副本。","错误：在借图书已达 5 本。","错误：重复 ISBN、借阅或预约。",

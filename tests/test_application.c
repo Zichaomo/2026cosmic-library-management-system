@@ -142,12 +142,18 @@ static void test_ui(void) {
     check(app.page==N_ADMIN && app.session.role==CL_ROLE_ADMIN,"edited PPT example authenticates through the actual login form");
     login("reader001");check(app.page==N_READER && app.session.authenticated && !*app.field[1].text,"keyboard login uses migrated authentication and clears password");
     key(KEY_ENTER);check(app.page==N_CATALOG && app.match_count==20,"reader home opens persisted catalog");
+    type("k");type("srlj");check(app.match_count==1 && cl_app_selected_id(&app)==2,"catalog initials search finds the real persisted Chinese title");
+    cl_app_enter(&app,N_CATALOG);type("k");type("SHENRU");check(app.match_count==1 && cl_app_selected_id(&app)==2,"catalog uppercase full-pinyin search finds the same record");
+    cl_app_enter(&app,N_CATALOG);type("k");type("demo-20");check(app.match_count==1 && cl_app_selected_id(&app)==20,"catalog ISBN search ignores ASCII case");
+    cl_app_enter(&app,N_CATALOG);
     type("J");check(app.command==CMD_BORROW && app.store.table[2].count==0,"borrow key asks confirmation before writing");
     type("N");check(app.command==0 && app.store.table[2].count==0,"cancelled confirmation leaves storage unchanged");
     type("J");type("Y");check(app.store.table[2].count==1 && book(&app.store,1,5)==2,"keyboard confirmation completes persisted borrow");
     type("K");type("N");check(app.searching && app.page==N_CATALOG && !app.command,"letters in search do not invoke commands");
     key(KEY_BACKSPACE);key(KEY_ENTER);key(KEY_ESC);key(KEY_TAB);key(KEY_ENTER);
     check(app.page==N_MY_LOANS && app.match_count==1,"reader can navigate to own persisted loans");
+    type("k");type("chengxu");check(app.match_count==1,"loan search resolves book ID to a pinyin-searchable title");
+    cl_app_enter(&app,N_MY_LOANS);
     type("g");check(app.command==CMD_RETURN && app.command_id==cl_app_selected_id(&app),"G return binds the selected persisted loan");type("N");
     type("x");check(app.command==CMD_RENEW && app.command_id==cl_app_selected_id(&app),"X renewal binds the selected persisted loan");type("N");
     NextPage before=app.page;cl_app_enter(&app,N_READERS);check(app.page==before,"reader cannot navigate into administrator pages");
@@ -156,6 +162,7 @@ static void test_ui(void) {
     int navigation=1;
     for (int i=0;i<8;++i) {cl_app_enter(&app,N_ADMIN);for (int j=0;j<i;++j) key(KEY_TAB);key(KEY_ENTER);if (app.page!=menus[i]) navigation=0;}
     check(navigation,"administrator menu reaches all eight management destinations");
+    cl_app_enter(&app,N_READERS);type("k");type("sldz");check(app.match_count==1,"administrator can find a reader by name initials");
     cl_app_enter(&app,N_READERS);type("d");check(app.command==CMD_FREEZE,"D opens reader freeze confirmation");type("N");
     cl_app_enter(&app,N_BOOKS);type("z");check(app.command==CMD_COPY,"Z asks before increasing copies");type("N");
     type("t");check(app.command==CMD_SUSPEND,"T asks before changing lending status");type("N");
@@ -206,6 +213,24 @@ static void test_ui(void) {
     check(app.match_count==0,"reader search excludes salts and password hashes");
     key(KEY_QUIT);check(!app.running,"Ctrl+Q exits application loop");cl_app_dispose(&app);
 }
+static void test_scrollbar(void) {
+    char file[512],line[1024];pathname(file,"scrollbar-grid.txt");
+    int counts[]={8,24,24,24},selected[]={0,0,8,23};
+    int first_expected[]={-1,13,18,23},last_expected[]={-1,17,22,27};
+    const char *names[]={"short lists hide the scrollbar","first page thumb starts at the top","middle page thumb moves down","final page thumb reaches the bottom"};
+    for (int i=0;i<4;++i) {
+        cl_ui_fill(0,0,120,35,BG);cl_ui_scrollbar(114,13,15,selected[i],counts[i],8);
+        FILE *f=fopen(file,"wb+");int ok=f && cl_terminal_text(f),first=-1,last=-1,row=0;
+        if (f) {
+            rewind(f);while (fgets(line,1024,f)) {
+                if (strstr(line,"┃")) {if (first<0) first=row;last=row;}
+                ++row;
+            }
+            if (fclose(f)) ok=0;
+        }
+        check(ok && row==35 && first==first_expected[i] && last==last_expected[i],names[i]);
+    }
+}
 int main(int argc,char **argv) {
     if (argc==3 && !strcmp(argv[1],"--restart")) {
         ClStore s={0};ClSession r={0};int ok=cl_store_open(&s,argv[2]) &&
@@ -213,6 +238,6 @@ int main(int argc,char **argv) {
         cl_store_dispose(&s);return ok?0:2;
     }
     if (argc!=2 || strstr(argv[1],"build/application/run-")!=argv[1]) return 2;
-    text_copy(root,512,argv[1]);test_circulation();test_limits();test_queue();test_failure();test_ui();
+    text_copy(root,512,argv[1]);test_circulation();test_limits();test_queue();test_failure();test_ui();test_scrollbar();
     printf("\n%d passed, %d failed\n",passed,failed);return failed?1:0;
 }

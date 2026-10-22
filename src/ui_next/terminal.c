@@ -167,6 +167,19 @@ void cl_ui_button(int x, int y, const char *label, int focused) {
 
 }
 
+void cl_ui_scrollbar(int x,int y,int height,int selected,int count,int page_size) {
+    if (x<0 || x>=CL_SCREEN_W || y<0 || height<2 || y>CL_SCREEN_H-height ||
+        page_size<1 || count<=page_size || selected<0 || selected>=count) return;
+    int pages=1+(count-1)/page_size,page=selected/page_size;
+    int thumb=(int)((long long)height*page_size/count);
+    if (thumb<1) thumb=1;
+    if (thumb>=height) thumb=height-1;
+    int start=(int)((long long)page*(height-thumb)/(pages-1));
+    for (int i=0;i<height;++i)
+        cl_ui_put(x,y+i,i>=start && i<start+thumb?"┃":"│",
+                  i>=start && i<start+thumb?ACCENT:BORDER,1);
+}
+
 static int row_changed(int y) {
     for (int x=0;x<CL_SCREEN_W;++x)
         if (cells[y][x].fg!=previous[y][x].fg || cells[y][x].bg!=previous[y][x].bg ||

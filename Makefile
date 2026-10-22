@@ -27,3 +27,7 @@ test-legacy:
 # build/ contains persistent user datasets. Never recursively delete it.
 clean:
 	@echo Persistent data retained. Remove individual unused executable files manually.
+
+.PHONY: test-search
+test-search:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/test-search.ps1

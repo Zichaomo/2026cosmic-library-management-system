@@ -1,0 +1,11 @@
+{
+  "unicode_version": "17.0.0",
+  "source": "https://www.unicode.org/Public/17.0.0/ucd/Unihan.zip",
+  "archive_sha256": "f7a48b2b545acfaa77b2d607ae28747404ce02baefee16396c5d2d7a8ef34b5e",
+  "properties": [
+    "kMandarin",
+    "kHanyuPinyin"
+  ],
+  "codepoints": 44350,
+  "license": "https://www.unicode.org/license.txt"
+}

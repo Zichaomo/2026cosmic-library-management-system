@@ -8,7 +8,7 @@ int main(int argc,char **argv) {
         else if (!strcmp(argv[i],"--seed-demo")) seed=1;
         else {fputs("Usage: library-next.exe --data prepared-ascii-directory [--seed-demo]\n",stderr);return 2;}
     }
-    if (!directory) {fputs("A prepared data directory is required. Use tools/run-library.ps1.\n",stderr);return 2;}
+    if (!directory) {fputs("A prepared data directory is required. Run make run from the project root.\n",stderr);return 2;}
     ClDateTime now;static NextApp app;
     if (!cl_datetime_now(&now) || !cl_app_init(&app,directory,now.date)) {
         fputs("Cannot load or recover data; existing files were not replaced with an empty library.\n",stderr);return 3;

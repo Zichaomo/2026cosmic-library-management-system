@@ -1,15 +1,18 @@
 #include "ui_next/app.h"
 #include <string.h>
 
+static const char *console_stage="none";
+static int console_close_failed;
 /* CONOUT$ is a Windows device filename, opened with textbook file functions.
    Do not inherit stderr: shells/build tools may redirect it or give it a
    non-writable handle. Closing each frame also flushes without fflush. */
 static int present(int force,int entering) {
     FILE *screen=fopen("CONOUT$","wb");
-    if (!screen) return 0;
+    if (!screen) {console_stage="open-CONOUT-wb";return 0;}
     int ok=!entering || fputs("\033[?1049h",screen)!=EOF;
-    if (ok) ok=cl_terminal_draw(screen,force);
-    if (fclose(screen)) ok=0;
+    if (!ok) console_stage="enter-alternate-screen";
+    if (ok) {ok=cl_terminal_draw(screen,force);if (!ok) console_stage="draw-frame";}
+    if (fclose(screen)) {console_close_failed=1;if (ok) console_stage="close-frame";ok=0;}
     return ok;
 }
 static int restore_console(void) {
@@ -50,8 +53,12 @@ int main(int argc,char **argv) {
         if (!app.running) break;
         cl_app_scene(&app);ok=present(e.key==KEY_F5?1:2,0);
     }
-    if (!restore_console()) ok=0;
+    if (!restore_console()) {if (ok) console_stage="restore-console";ok=0;}
     cl_app_dispose(&app);
-    if (!ok) puts("Console output failed. Run in an interactive Windows terminal; data was not reset.");
+    if (!ok) {
+        puts("Console output failed; data was not reset. Diagnostic version 20261022-4:");
+        printf("Stage=%s, frame_close_failed=%d\n",console_stage,console_close_failed);
+        cl_terminal_report(stdout);
+    }
     return ok?0:1;
 }

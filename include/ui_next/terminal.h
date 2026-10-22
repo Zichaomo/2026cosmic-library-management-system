@@ -26,6 +26,8 @@ void cl_ui_scrollbar(int x,int y,int height,int selected,int count,int page_size
 /* force: 0 dirty rows, 1 clear + full redraw, 2 full repaint without clearing.
    Interactive repaint repairs terminal damage after resizing on the next key. */
 int cl_terminal_draw(FILE *stream,int force);
+/* Numeric diagnostics only; never includes rendered text or user data. */
+void cl_terminal_report(FILE *stream);
 int cl_terminal_text(FILE *stream);
 void cl_terminal_reset(FILE *stream);
 #endif

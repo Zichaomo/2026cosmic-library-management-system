@@ -31,7 +31,7 @@ run: all
 	@$(MAKE) --no-print-directory run-compiled DATA_DIR="$(DATA_DIR)"
 
 run-compiled: prepare
-	"$(APP)" --data "$(DATA_DIR)"
+	chcp 65001 >nul && "$(APP)" --data "$(DATA_DIR)"
 
 migrated: all
 run-migrated: run
@@ -63,3 +63,10 @@ test-preview:
 # Keep user data and running executables intact.
 clean:
 	@echo Persistent data retained. Remove individual unused executables manually.
+
+.PHONY: diagnose-console
+diagnose-console:
+	@if not exist build\console mkdir build\console
+	$(CC) $(CFLAGS) tools/console/probe.c -o build/console/probe.exe
+	@chcp
+	chcp 65001 && build\console\probe.exe

@@ -12,6 +12,8 @@ static Cell cells[CL_SCREEN_H][CL_SCREEN_W], previous[CL_SCREEN_H][CL_SCREEN_W];
 static int previous_valid;
 static char output[200000];
 static int output_length, output_ok;
+static int write_status,write_error;
+static size_t write_count;
 
 static void add(const char *s) {
     for (; *s; ++s) {
@@ -189,6 +191,7 @@ static int row_changed(int y) {
 
 int cl_terminal_draw(FILE *stream, int force) {
     int changed=0, fg=-1,bg=-1;
+    write_status=0;write_error=0;write_count=0;
     output_length=0; output_ok=1; output[0]=0;
     if (!previous_valid || force==1) { add("\033[?25l\033[?7l"); color(TEXT,BG); add("\033[2J"); }
     for (int y=0;y<CL_SCREEN_H;++y) {
@@ -203,11 +206,19 @@ int cl_terminal_draw(FILE *stream, int force) {
     }
     if (!changed) return 1;
     position(0,0);
-    if (!output_ok || fwrite(output,1,(size_t)output_length,stream)!=(size_t)output_length || ferror(stream)) return 0;
+    if (!output_ok) {write_status=1;return 0;}
+    write_count=fwrite(output,1,(size_t)output_length,stream);
+    write_error=ferror(stream);
+    if (write_count!=(size_t)output_length || write_error) {write_status=2;return 0;}
     for (int y=0;y<CL_SCREEN_H;++y)
         for (int x=0;x<CL_SCREEN_W;++x) previous[y][x]=cells[y][x];
     previous_valid=1;
     return 1;
+}
+
+void cl_terminal_report(FILE *stream) {
+    fprintf(stream,"Renderer status=%d (1=frame overflow, 2=write failure), expected=%d, written=%llu, stream_error=%d\n",
+            write_status,output_length,(unsigned long long)write_count,write_error);
 }
 
 int cl_terminal_text(FILE *stream) {

@@ -1,3 +1,5 @@
+> 历史记录说明（2026-10-22）：本文涉及的 Python/PowerShell/.NET 工具仅留本地，已从当前仓库取消跟踪，旧启动与单写者保护说明已被[纯 C 启动流程](../../docs/纯C启动与仓库边界.md)取代；历史测试结果仅对应当时版本。
+
 # 多终端可行性实验
 
 仓库根目录执行 `make test-concurrency`。需要 Windows GCC 与 Python 3，使用build/concurrency/run-GUID下的全新空文件，不访问应用CSV。结果不是“多终端已实现”，只说明当前CRT的实际模式行为。

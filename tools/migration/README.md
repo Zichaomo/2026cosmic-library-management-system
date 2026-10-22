@@ -1,3 +1,5 @@
+> 历史记录说明（2026-10-22）：本文涉及的 Python/PowerShell/.NET 工具仅留本地，已从当前仓库取消跟踪，旧启动与单写者保护说明已被[纯 C 启动流程](../../docs/纯C启动与仓库边界.md)取代；历史测试结果仅对应当时版本。
+
 # UTF-8 数据与认证迁移模块
 
 代码位于 `include/migration/` 和 `src/migration/`，复用基础工具层，纯 C 实现不链接 BCrypt。现已由 `src/ui_next/` 新应用接入，启动见 `tools/run-library.ps1`；`tools/preview/` 仍是内存演示，`make all` 仍构建旧主体。

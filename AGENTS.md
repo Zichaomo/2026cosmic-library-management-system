@@ -1,7 +1,11 @@
 # 项目协作约定
 
-- 当前交付范围为课程合规单进程。C 业务、界面与测试遵守 docs/课程允许函数清单.md；外部启动/测试工具与 C 实现边界分开说明。
-- 用户要求：每轮程序修改完成并通过相关检查后，更新项目 start/ 内的编译产物，方便直接启动检查。执行 tools/run-library.ps1 -BuildOnly 会编译 C 程序并发布 start/CosmicLibrary.exe（外部环境启动器）和 start/app/ 内的 C 程序；用 -UsePublished -BuildOnly 检查预编译入口。最终告知双击入口，不只给源码。
-- 保留运行数据和正在运行的实例；不得清空 build/、重置 build/library-data 或杀死旧实例来覆盖 exe。采用唯一编译文件名，启动清单指向新版。
-- exe、构建缓存、运行 CSV 与快照保留在本地，不纳入源码提交。源码历史保留，按功能分批 commit，不重写历史；仅在用户要求时推送。
-- PPT/报告暂缓。未被用户选中的功能候选不自动实施；已授权的 A 筛选排序、B 图书资料编辑、D 到期提醒应完成实现与验证。
+- 当前交付范围为课程合规单进程。现行 C 源码、界面和 C 测试遵守 docs/课程允许函数清单.md。
+- 用户最新要求：Gitee 当前版本不提交 Python、PowerShell、C# 开发工具；文件保留本地并忽略，保留 Git 历史，不重写旧提交。
+- 程序运行全程直接使用 C exe，不调用 PowerShell、Python、.NET 或外部启动器。终端 UTF-8、120×35 尺寸与避免重复启动由用户手动保证，不重新添加外部保护。
+- make 直接用 GCC 编译到 start/CosmicLibrary.exe，这个文件就是 C 业务程序。make run 在项目根目录直接启动；make run-compiled 跳过编译。C 不调用 system 或 Win32 启动 API。
+- 教材范围没有创建目录函数。Makefile 在运行前用 cmd 的 mkdir/copy 准备新的 build/library-data，再调用 C --seed-demo。既有目录不初始化、不覆盖；准备失败保留现场，不自动重置数据。
+- 每轮程序修改通过检查后更新 start/ 的 C exe。保留正在运行的实例，不能杀进程或清空 build/，不能覆盖被占用的 exe；需要时提示用户关闭后重编译。
+- exe、缓存、真实运行 CSV 与快照只留本地；resources/empty-data/ 是可提交的空数据格式模板。make clean 保留数据。
+- 保留源码历史并按功能分批 commit；本次纯 C 启动与仓库清理沿用用户推送 Gitee 的请求，后续仅在用户要求时推送。
+- PPT/报告暂缓，未选功能不自动实施。开发用审计/回归工具可在本地使用，但不得重新加入 Git，也不得通过旧发布脚本覆盖纯 C 入口。

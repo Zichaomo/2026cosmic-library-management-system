@@ -1,53 +1,51 @@
 # 宇宙图书馆管理系统
 
-纯 C、Windows 控制台、UTF-8 CSV 持久化的课程设计，提供管理员与读者、图书管理、借还续借、预约、罚款及统计，共 17 页。默认构建已切换到符合当前课程函数范围的新实现，旧实现独立归档于 legacy/。用户已认可本轮展示界面，选择课程合规单进程交付；完整输入法专项仍需按实际演示环境确认，当前不标记为最终版。
+Windows 控制台纯 C 课程设计：管理员与读者、图书管理、借还续借、预约、罚款及统计，共17页。当前 C 实现遵守[教材函数范围](docs/课程允许函数清单.md)，使用 UTF-8 CSV 与两槽快照保存数据。旧实现位于 legacy/，不参与当前程序构建。
 
-交付范围、演示流程及源码包见[单进程交付说明](docs/单进程交付说明.md)。多终端自动同步与并发写入保留为后续扩展。
+## 编译与运行
 
-## 启动
+安装 Windows GCC/MinGW 和 GNU Make，将 gcc、make 加入 PATH。在项目根目录执行：
 
-本机检查可直接双击`start/CosmicLibrary.exe`，使用已编译程序，不必再运行GCC。每次编译会自动更新start/；外部启动器仅配置环境与保护数据，C业务仍遵守课程限制。新克隆先按下述命令编译一次。启动文件和运行数据不提交Git。
-
-
-使用 Windows GCC/MinGW，将 gcc 和 make 加入 PATH。在项目根目录的 PowerShell 执行：
-
-```powershell
-.\tools\run-library.ps1
+```text
+chcp 65001
+make run
 ```
 
-或 `make run`。终端支持 ANSI 真彩色，至少 120 列 ×35 行；脚本设置 UTF-8 代码页并检查实际可见尺寸。Tab/方向键导航，Enter 确认，F1 帮助，F5 重读，Ctrl+Q 退出。列表按 K 键进入检索，支持中文、全拼、首字母及混合输入；超过一页时显示键盘位置滚动条；完整按键表见[快捷键与缩放修正](docs/快捷键与缩放修正记录.md)。
+运行前手动把终端调整到至少120列×35行，使用支持 ANSI 真彩色的 Windows Terminal。`chcp 65001` 是用户手动设置环境的命令，不由 C 程序调用。程序通过教材允许的 getch 和输出函数完成交互，不启动 Python、PowerShell 或 .NET。
 
-欢迎页标题、标语与按钮按同一中轴居中。管理员/读者工作台采用左导航、右侧概览与事项说明；表单提示左右定位、插入和删除，见[工作台与编辑调整](docs/工作台与编辑交互调整.md)。缩小窗口再放大后，下一次有效按键会完整补画；推荐按 F5 直接恢复，不触发业务操作。白名单下仍使用阻塞 getch，静置时不能自动检测尺寸。
+- `make`：严格 C11 编译，输出 `start/CosmicLibrary.exe`；这个 exe 就是 C 主程序，没有启动器。
+- `make run`：编译、首次准备数据，再直接运行 C 主程序。
+- `make run-compiled`：使用已有 C exe，跳过编译。
+- `make test`：直接编译运行基础、拼音、应用与原型 C 测试，不依赖 Python/PowerShell。
 
-首次在 `build/library-data` 创建独立样本：读者 `reader001 / reader123`、管理员 `admin / admin123`，20 种图书各 3 册。再次启动保留修改，不会重置。原始 data/ 不会使用；请保留 build/library-data，`make clean` 也不会删除它。
+数据准备完成后，也可从项目根目录直接运行：
 
-启动器在整个运行期间持有目录独占句柄，请保持单进程并从脚本启动。直接执行 exe 没有此保护。两槽快照支持进程中断恢复，不保证断电落盘；新快照建立后不要手改 CSV 或让旧程序同时写入。F5 是手动刷新，无按键时不自动同步。
-
-借书/预约按读者账号、姓名、书名或ISBN办理，重名结果可选择，确认框显示名称。借阅S筛选/P排序，图书管理B编辑，工作台D查看到期提醒。详见[功能验证记录](docs/借阅易用性与ABD功能记录.md)。
-
-## 构建与验证
-
-```powershell
-make
-make test
+```text
+start\CosmicLibrary.exe --data build/library-data
 ```
 
-`make` 仅编译新应用，唯一 exe 路径保存在 `build/application/latest.txt`，不启动、不准备数据、不覆盖已运行实例。`make test` 一次完成源码清单核对、新构建、基础55、迁移66、应用153、原型67、拼音检索22与旧参照91项，以及新进程持久化、真实文件锁失败恢复和启动器独占检查。测试需要 Python 3（PATH 或本机 Codex bundled runtime），兼容参照独立链接 BCrypt，新应用不链接。
+exe 需要数据目录参数，不作为无参数双击入口。教材白名单没有创建目录和启动其他进程所需的函数，因此不另写启动器。Makefile 仅在运行前通过 cmd 内建 mkdir/copy 将 resources/empty-data/ 的空模板放入新目录，然后由 C 程序生成样例。已有目录保持原样，文件缺失或损坏会报错，不会静默重置。目录准备或首次样例生成失败时请保留现场排查，不要直接删除现有数据。
 
-可分别执行 `make audit`、`make test-foundation`、`make test-migration`、`make test-application`、`make test-preview`、`make test-legacy`。`make migrated` / `make run-migrated` 保留为新构建/运行别名。VS Code 的默认构建、运行和测试任务调用同一套脚本。
+默认数据仍为 `build/library-data`，保留之前的使用进度；新目录提供 admin/admin123、reader001/reader123 和20种样例书。也可用 `make run DATA_DIR=build/demo` 创建独立演示数据，路径请使用简单的相对 ASCII 目录，不含空格或命令字符。原始 data/ 不使用，make clean 不清理数据。
 
-新增离线检索位于src/search/、include/search/，Unicode数据许可及生成方式见[搜索说明](tools/search/README.md)。更多功能候选见[功能补齐与参考方案](docs/功能补齐与参考方案.md)，由用户选择后实施，PPT/报告暂缓。
+这是单进程版本，请人工避免多个实例同时操作同一目录。已取消外部单写者保护、窗口尺寸检测和代码页设置。两槽快照支持进程中断恢复，不保证断电落盘。建立快照后不要手改导出 CSV。
 
-## 源码与文档
+## 功能与操作
 
-- `src/ui_next/`、`include/ui_next/`：当前应用、17页导航和共用终端；目录名保留迁移期间命名。
-- `src/migration/`、`include/migration/`：当前业务、认证、CSV与快照仓储。
-- `src/utils/foundation_*.c`、`include/utils/foundation.h`、`include/base_types.h`：基础工具与课程类型。
-- `tests/`：当前 C 测试，遵守同一函数范围。
-- `tools/`：外部 PowerShell/Python 工具与合规内存原型 C 源码。原型 `tools/preview/run-preview.ps1` 不持久化。
-- `legacy/`：原样保留的旧源码、头文件、测试和演示，单独核对哈希，不纳入合规应用。
-- `build/`：被 Git 忽略的构建产物、独立测试和持久化体验数据。
+Tab/方向键导航，Enter确认，F1帮助，F5刷新，Ctrl+Q退出。窗口缩放后按F5完整补画，静置时不自动检测窗口变化。
 
-[第六步回归与合规记录](docs/第六步回归与合规记录.md)提供范围与验收限制；接续工作看[续接摘要](docs/续接摘要.md)。另见[计划](docs/plan.md)、[课程函数清单](docs/课程允许函数清单.md)、[第五步业务与界面](docs/第五步业务与界面验证记录.md)、[CSV与认证](docs/CSV与认证迁移验证记录.md)、[基础工具](docs/基础工具层验证记录.md)、[页面草图](docs/design/页面草图说明.md)。
+K检索支持中文、拼音全拼、首字母和混合输入；超过8项显示键盘位置滚动条。借书/预约支持姓名、账号、书名或ISBN，重名候选需选择，确认框显示名称。借阅S筛选/P排序，图书管理B编辑资料，工作台D查看到期提醒。
 
-中文项目根路径可用；数据目录参数须项目内相对 ASCII 路径。安全导入步骤见[迁移工具说明](tools/migration/README.md)。新盐仅为课程演示随机方案，不作为真实用户系统的密码安全设计。
+## 仓库范围
+
+- src/、include/：现行纯 C 业务、界面、基础工具与离线拼音字表。
+- tests/、tools/preview/：C 测试与内存界面原型。
+- resources/empty-data/：无用户数据的初始格式模板。
+- tools/search/：拼音数据来源、元数据及必须保留的 Unicode 许可。
+- docs/：设计和验证记录；历史步骤中的脚本说明不再代表当前启动流程。
+- legacy/：保留历史源码，不编译进当前应用。
+- start/、build/：本地 exe、运行数据和测试产物，二进制不提交。
+
+Python、PowerShell、C# 开发工具保留在本机但已取消跟踪，当前版本不包含这些源码。Git 历史按用户要求保留，旧提交中的工具仍可查阅。拼音字表已提交，普通构建与运行无需生成器或联网。
+
+详细变更见[纯 C 启动与仓库边界](docs/纯C启动与仓库边界.md)，后续任务见[续接摘要](docs/续接摘要.md)。PPT与报告暂缓。

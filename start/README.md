@@ -1,13 +1,15 @@
-# 本地纯 C 程序
+# 编译产物
 
-make 编译得到这里的 CosmicLibrary.exe，现已直接替换为 C 主程序，不含 C# 启动器。编译时若程序被占用，请先正常退出再编译，不会强制结束实例。
+在项目根目录执行 `make`，生成这里的 `CosmicLibrary.exe`。它是 C 主程序，需要数据目录参数；不支持无参数双击进入。
 
-在项目根目录手动调整终端到120×35后运行（Makefile在同cmd命令中设置UTF-8，C不调用系统命令）：
+日常检查在项目根目录执行：
 
 ```text
 make run
 ```
 
-已有编译产物用 make run-compiled；已准备好数据可直接执行 cmd /d /c "chcp 65001 >nul && start\CosmicLibrary.exe --data build/library-data"。exe需要参数，不支持无参数双击直接进入。旧 app/、latest.txt、cmd 和 .NET 启动器属于本地历史产物，当前启动流程不使用它们。不要再调用本地旧 PowerShell 发布脚本。
+已有编译产物可用 `make run-compiled`。Makefile 在同一条 cmd 命令中设置 UTF-8 后启动；手动调整窗口至至少 120×35。
 
-exe 不提交 Git；克隆后 make 编译即可。数据仍保存在项目的 build/library-data，已有进度不会重置。
+已有数据保存在 `build/library-data`，再次启动保留修改。exe 被占用时先正常退出后再编译，不强制结束进程。二进制不提交 Git，新克隆需先编译。
+
+完整步骤和排错见[运行说明](../docs/运行说明.md)。本地旧 `app/`、`latest.txt` 或旧启动文件不参与当前流程，不要调用旧发布脚本覆盖此入口。
